@@ -13,6 +13,7 @@ This document captures prioritised improvement ideas for the Ubuntu Core / AWS G
 | 3 | [IoT Device Shadow for Runtime Configuration](#3-iot-device-shadow-for-runtime-configuration) | Cloud-to-edge control |
 | 4 | [Event-Driven Alerting on Specific Detections](#4-event-driven-alerting-on-specific-detections) | Real-world applicability |
 | 5 | [Dashboard Bounding Box Overlay as Interactive Data](#5-dashboard-bounding-box-overlay-as-interactive-data) | Visualisation |
+| 6 | [Multi-Model Support via OpenVINO Model Server](#6-multi-model-support-via-openvino-model-server) | AI capability breadth |
 
 ---
 
@@ -248,13 +249,100 @@ const scaleBox = (box, imgWidth, imgHeight) => ({
 
 ---
 
+## 6. Multi-Model Support via OpenVINO Model Server
+
+### Problem
+
+The current solution is locked to a single Faster R-CNN object detection model. Whilst effective for demonstrating detection, a single model type limits the range of AI use cases the demo can represent and does not showcase the full capability of OpenVINO Model Server, which is designed to serve multiple models simultaneously.
+
+### Solution
+
+Configure OVMS to serve multiple models concurrently and introduce a model pipeline concept within `InferenceHandlerCore`. Different models run in sequence or in parallel on the same frame, with each result enriching the final output. The active pipeline is selectable at runtime via Device Shadow (see recommendation 3).
+
+### Models to Add
+
+| Model Type | Example Model | Use Case | OpenVINO Support |
+|---|---|---|---|
+| Object detection | Faster R-CNN (existing) | Locate and classify objects | Native |
+| Image classification | EfficientNet / MobileNet | Scene-level "what is this?" | Native |
+| Anomaly detection | PADIM / PatchCore | Industrial defect detection | Intel AI Reference Models |
+| Semantic segmentation | DeepLab v3 | Pixel-level scene understanding | Native |
+
+### Implementation
+
+**`OpenVINOModelServerContainerCore` recipe changes:**
+
+Replace the single `--model_name` / `--model_path` Docker flags with a multi-model config file mounted into the container:
+
+```yaml
+# models_config.json (added as an artifact)
+{
+  "model_config_list": [
+    { "config": { "name": "faster_rcnn",    "base_path": "/models/faster_rcnn" } },
+    { "config": { "name": "efficientnet",   "base_path": "/models/efficientnet" } },
+    { "config": { "name": "anomaly_detect", "base_path": "/models/anomaly_detect" } }
+  ]
+}
+```
+
+```bash
+# Updated Docker run command in recipe
+docker run -u 0 -d \
+  -v {artifacts:decompressedPath}/models:/models \
+  -v {artifacts:path}/models_config.json:/config/models_config.json \
+  -p 9000:9000 \
+  openvino/model_server:latest \
+  --config_path /config/models_config.json \
+  --port 9000
+```
+
+**`InferenceHandlerCore` changes:**
+
+Introduce a pipeline concept where multiple model calls are chained per frame:
+
+```python
+PIPELINES = {
+    "detection_only": ["faster_rcnn"],
+    "detection_and_classify": ["faster_rcnn", "efficientnet"],
+    "anomaly": ["anomaly_detect"],
+    "full": ["faster_rcnn", "efficientnet", "anomaly_detect"],
+}
+
+def run_inference(self, message):
+    image = self.load_image(message['image_path'])
+    pipeline = PIPELINES.get(self.config['active_pipeline'], ["faster_rcnn"])
+    combined_result = {}
+
+    for model_name in pipeline:
+        result = self.run_model(image, model_name)
+        combined_result[model_name] = result
+
+    self.publish_results(combined_result)
+    self.upload_to_s3(image)
+```
+
+Each model's results are published as a named key in the MQTT payload, so the dashboard can render them distinctly. The `active_pipeline` config key is switchable at runtime via Device Shadow.
+
+**New Greengrass component for model management:**
+
+A lightweight `com.example.ModelManagerCore` component could be added to handle downloading new model versions from S3 and notifying the inference handler to reload — decoupling model lifecycle from component deployment.
+
+### Value
+
+- Dramatically expands the range of AI scenarios the demo can represent from a single edge device
+- OVMS multi-model serving is a key differentiator of the Intel OpenVINO stack — this directly showcases it
+- Anomaly detection is a particularly compelling addition for industrial and manufacturing audiences: no labelled training data is needed for many use cases
+- Pipeline switching via Device Shadow (recommendation 3) means the audience can see the device switch from object detection to anomaly detection mode live, without any redeployment
+- Sets up the architecture for the OTA model update pipeline (backlog item)
+
+---
+
 ## Additional Recommendations (Backlog)
 
 The following improvements were identified but are lower priority for the initial demo enhancement:
 
 | Improvement | Description |
 |---|---|
-| **Multi-model support** | Configure OVMS to serve multiple models (classification, segmentation, anomaly detection) simultaneously; parameterise the inference component to call different model endpoints |
 | **Greengrass Stream Manager** | Replace direct S3 uploads with Greengrass Stream Manager for reliable buffering, automatic retry, and bandwidth throttling during poor connectivity |
 | **Image history archiving** | Write timestamped images to `camera/history/YYYYMMDD_HHMMSS.jpg` alongside `latest-inference.jpg` with S3 Lifecycle Rules for automatic expiry |
 | **Inference metrics to CloudWatch** | Time each inference call; publish latency, detections-per-frame, and error rate via Greengrass telemetry to CloudWatch for fleet monitoring |
