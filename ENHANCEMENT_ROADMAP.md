@@ -14,6 +14,7 @@ This document captures prioritised improvement ideas for the Ubuntu Core / AWS G
 | 4 | [Event-Driven Alerting on Specific Detections](#4-event-driven-alerting-on-specific-detections) | Real-world applicability |
 | 5 | [Dashboard Bounding Box Overlay as Interactive Data](#5-dashboard-bounding-box-overlay-as-interactive-data) | Visualisation |
 | 6 | [Multi-Model Support via OpenVINO Model Server](#6-multi-model-support-via-openvino-model-server) | AI capability breadth |
+| 7 | [Model Download Management via S3Downloader Component](#7-model-download-management-via-s3downloader-component) | Model lifecycle management |
 
 ---
 
@@ -334,6 +335,133 @@ A lightweight `com.example.ModelManagerCore` component could be added to handle 
 - Anomaly detection is a particularly compelling addition for industrial and manufacturing audiences: no labelled training data is needed for many use cases
 - Pipeline switching via Device Shadow (recommendation 3) means the audience can see the device switch from object detection to anomaly detection mode live, without any redeployment
 - Sets up the architecture for the OTA model update pipeline (backlog item)
+
+---
+
+## 7. Model Download Management via S3Downloader Component
+
+### Problem
+
+The current solution bundles the AI model as a ZIP artifact inside the `OpenVINOModelServerContainerCore` Greengrass component. This approach has several hard limitations:
+
+- Greengrass component artifacts have a **5 GB size ceiling**, which is already constraining for Faster R-CNN and becomes a blocker as larger or multiple models are added (see recommendation 6)
+- Every model update requires a full component redeployment, which re-uploads the entire artifact to S3 and re-pushes it to the device
+- There is no visibility into download progress or the ability to pause, resume, or cancel a transfer
+- The device has no registry of which models are available locally, making dynamic model switching (recommendation 3) fragile
+
+### Solution
+
+Integrate the [aws-samples/sample-model-downloader-greengrass-component](https://github.com/aws-samples/sample-model-downloader-greengrass-component) as an additional Greengrass component (`aws.samples.S3Downloader`). This component decouples model files from the component deployment lifecycle entirely: models live in S3 and are pulled to the device on demand via MQTT commands, with progress tracked and model metadata persisted in an IoT Device Shadow.
+
+### How It Works
+
+The S3Downloader component (`aws.samples.S3Downloader`) runs as a persistent service on the device and exposes a three-topic MQTT interface:
+
+| Topic | Direction | Purpose |
+|---|---|---|
+| `s3downloader/{thingName}/commands` | Cloud → Device | Trigger download, pause, resume, cancel, list |
+| `s3downloader/{thingName}/responses` | Device → Cloud | Command acknowledgement with `downloadId` |
+| `s3downloader/{thingName}/status` | Device → Cloud | Real-time progress updates |
+
+Downloads use **s5cmd** under the hood — a concurrent S3 transfer tool — with configurable parallelism and exponential backoff retry (up to 10 attempts), making it robust over unreliable edge connectivity.
+
+When a download completes, the model is automatically registered in a named IoT Device Shadow called `models`:
+
+```json
+{
+  "state": {
+    "reported": {
+      "models": {
+        "faster_rcnn_v2": {
+          "model_id": "faster_rcnn_v2",
+          "model_name": "Faster R-CNN",
+          "model_version": "2.0",
+          "local_path": "/data/models/faster_rcnn",
+          "last_updated": 1710000000
+        },
+        "efficientnet": {
+          "model_id": "efficientnet",
+          "model_name": "EfficientNet B0",
+          "model_version": "1.0",
+          "local_path": "/data/models/efficientnet",
+          "last_updated": 1710000100
+        }
+      }
+    }
+  }
+}
+```
+
+### Integration with This Solution
+
+**Step 1 — Deploy the S3Downloader component** alongside the existing three components. Add it to `deploy_greengrass_components.py` and grant the Greengrass Token Exchange Role `s3:GetObject` and `s3:ListBucket` on the model S3 bucket.
+
+**Step 2 — Remove model artifacts from `OpenVINOModelServerContainerCore`**. Strip the `object_detection_model.zip` artifact from the recipe. Instead, OVMS mounts a local directory that the S3Downloader populates:
+
+```yaml
+# Updated OpenVINOModelServerContainerCore recipe run script
+docker run -u 0 -d \
+  -v /data/models:/models \
+  -v {artifacts:path}/models_config.json:/config/models_config.json \
+  -p 9000:9000 \
+  openvino/model_server:latest \
+  --config_path /config/models_config.json \
+  --port 9000
+```
+
+**Step 3 — Trigger initial model downloads** from the deployment pipeline. After Greengrass deployment completes, `deploy_greengrass_components.py` publishes a download command per model via IoT Core:
+
+```json
+{
+  "command": "download",
+  "bucket": "your-model-bucket",
+  "key": "models/faster_rcnn/",
+  "destination": "/data/models/faster_rcnn",
+  "model_meta": {
+    "model_id": "faster_rcnn",
+    "model_name": "Faster R-CNN",
+    "model_version": "1.0"
+  }
+}
+```
+
+**Step 4 — Update `InferenceHandlerCore`** to discover available models from the `models` shadow before initialising the OVMS client, rather than relying on a hardcoded `MODEL_NAME` environment variable. This gives the component a live inventory of what is actually present on disk.
+
+**Step 5 — Model updates without redeployment**. To push a new model version, upload the model files to S3 and publish a download command — no Greengrass deployment required. The S3Downloader handles the transfer, updates the shadow, and the inference component picks up the new model on its next shadow read or via a Device Shadow delta (recommendation 3).
+
+### New Deployment Flow
+
+```
+Upload model to S3
+       │
+       ▼
+Publish download command to s3downloader/{thingName}/commands
+       │
+       ▼
+S3Downloader pulls model to /data/models/ with progress updates
+       │
+       ▼
+Model registered in "models" Device Shadow
+       │
+       ▼
+OVMS picks up new model from mounted /models directory
+       │
+       ▼
+InferenceHandlerCore reads shadow → switches active model
+```
+
+### Value
+
+- Removes the 5 GB artifact size ceiling entirely — models of any size can be deployed
+- Model updates become a lightweight S3 upload + MQTT command, with no Greengrass redeployment and no downtime
+- Real-time download progress is visible in the dashboard message feed via the status topic, making large model deployments transparent to operators
+- The `models` Device Shadow gives the cloud a live inventory of exactly which model versions are present on every device in the fleet
+- Directly enables the multi-model pipeline in recommendation 6 — each model in the pipeline can be downloaded and updated independently
+- Pairs naturally with the OTA model update pipeline (backlog) — CodePipeline uploads to S3 and fires the MQTT command, completing the full MLOps loop without ever touching a Greengrass deployment
+
+### Reference
+
+- Repository: [aws-samples/sample-model-downloader-greengrass-component](https://github.com/aws-samples/sample-model-downloader-greengrass-component)
 
 ---
 
