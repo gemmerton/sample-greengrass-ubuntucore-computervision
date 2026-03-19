@@ -1,0 +1,266 @@
+# Improvement Recommendations
+
+This document captures prioritised improvement ideas for the Ubuntu Core / AWS Greengrass / Intel OpenVINO computer vision edge demo. All recommendations retain the core technology stack.
+
+---
+
+## Priority Recommendations
+
+| Priority | Improvement | Theme |
+|---|---|---|
+| 1 | [Confidence Threshold Filtering](#1-confidence-threshold-filtering) | Inference quality |
+| 2 | [Motion-Triggered Inference](#2-motion-triggered-inference) | Edge intelligence |
+| 3 | [IoT Device Shadow for Runtime Configuration](#3-iot-device-shadow-for-runtime-configuration) | Cloud-to-edge control |
+| 4 | [Event-Driven Alerting on Specific Detections](#4-event-driven-alerting-on-specific-detections) | Real-world applicability |
+| 5 | [Dashboard Bounding Box Overlay as Interactive Data](#5-dashboard-bounding-box-overlay-as-interactive-data) | Visualisation |
+
+---
+
+## 1. Confidence Threshold Filtering
+
+### Problem
+
+The `InferenceHandlerCore` currently renders the top 10 detections unconditionally — a bounding box with a confidence score of 0.01 is drawn identically to one scored 0.99. This produces visually noisy output and undermines confidence in the AI results.
+
+### Solution
+
+Add a configurable `confidence_threshold` parameter to the `InferenceHandlerCore` component. Only detections above this threshold are annotated on the image and included in the published MQTT payload.
+
+### Implementation
+
+- Add `ConfidenceThreshold` to the `DefaultConfiguration` in `com.example.InferenceHandlerCore-1.0.0.yaml` (suggested default: `0.5`)
+- Pass it as an environment variable in the recipe `Run` script
+- In `inference_handler_core.py`, read the threshold in `load_config()` and filter the detection loop in `run_inference()`:
+
+```python
+for i in range(self.config['detections_limit']):
+    score = detection_scores[0, i]
+    if score < self.config['confidence_threshold']:
+        continue
+    # ... draw box and add to result
+```
+
+### Value
+
+- Immediate improvement to visual output quality with minimal code change
+- Makes the threshold tuneable per deployment (e.g., stricter for industrial inspection, looser for general demos) without code changes
+- Cleaner MQTT payloads reduce downstream noise in the dashboard message feed
+
+---
+
+## 2. Motion-Triggered Inference
+
+### Problem
+
+The camera captures and submits an image to the inference pipeline every 10 seconds regardless of whether anything has changed in the scene. This wastes inference compute on the OpenVINO Model Server, generates unnecessary S3 uploads, and produces a flat, uninteresting stream of nearly identical images.
+
+### Solution
+
+Replace the fixed-interval capture loop with a continuous low-FPS capture loop that applies on-device motion detection (frame differencing or background subtraction) before triggering inference. Inference is only invoked when meaningful motion is detected.
+
+### Implementation
+
+- In `camera_handler_core.py`, replace the `time.sleep` loop with a persistent `cv2.VideoCapture` session
+- Apply OpenCV background subtraction between frames using `cv2.createBackgroundSubtractorMOG2()`
+- Calculate the percentage of changed pixels against a configurable `motion_threshold`
+- Only publish the image path to the `camera/images` MQTT topic when the threshold is exceeded
+- Add `MotionThreshold` and `MinMotionArea` to the recipe configuration
+
+```python
+fgbg = cv2.createBackgroundSubtractorMOG2()
+while True:
+    ret, frame = cap.read()
+    fgmask = fgbg.apply(frame)
+    motion_area = cv2.countNonZero(fgmask)
+    if motion_area > self.config['min_motion_area']:
+        image_path = self.save_image(frame)
+        self.publish_image_event(image_path)
+    time.sleep(self.config['frame_interval'])
+```
+
+### Value
+
+- Demonstrates genuine edge intelligence: the device makes a local decision before invoking the AI pipeline
+- Reduces inference calls, S3 writes, and IoT Core message volume — quantifiably demonstrable during a demo
+- Realistic pattern for security camera and industrial monitoring use cases
+- Keeps inference results meaningful — when something is detected, something actually happened
+
+---
+
+## 3. IoT Device Shadow for Runtime Configuration
+
+### Problem
+
+Changing any configuration parameter (capture interval, confidence threshold, model name) currently requires a full Greengrass component redeployment, which takes several minutes and requires cloud connectivity to the Greengrass service. There is no way to adjust device behaviour in real time.
+
+### Solution
+
+Integrate AWS IoT Device Shadow with both Greengrass components so that configuration can be updated from the cloud and applied without redeployment. Each component subscribes to its shadow's `delta` document via Greengrass IPC and reconfigures itself when a change is received.
+
+### Implementation
+
+- Add `aws.greengrass.ShadowManager` as a dependency in both component recipes
+- Grant each component IPC access to read and update the local device shadow
+- In each component's main loop, subscribe to shadow delta events:
+
+```python
+self.ipc_client.subscribe_to_shadow_named_shadow_update_events(
+    thing_name=os.environ.get('AWS_IOT_THING_NAME'),
+    shadow_name='camera-config',
+    on_stream_event=self.on_shadow_delta
+)
+```
+
+- On delta receipt, update the in-memory config dict and apply changes (e.g., adjust the motion threshold, swap the active model name, change the capture interval)
+- Report the accepted state back to the shadow to confirm
+
+### Configurable Parameters via Shadow
+
+| Parameter | Component | Effect |
+|---|---|---|
+| `capture_interval` | CameraHandlerCore | Change frame rate |
+| `motion_threshold` | CameraHandlerCore | Sensitivity of motion trigger |
+| `confidence_threshold` | InferenceHandlerCore | Filter detection noise |
+| `model_name` | InferenceHandlerCore | Switch active OVMS model |
+| `detections_limit` | InferenceHandlerCore | Cap number of drawn boxes |
+
+### Value
+
+- Enables live demo adjustment: increase sensitivity, switch models, tune confidence — all from the AWS Console or CLI with immediate effect on the device
+- Tells a compelling story about cloud-to-edge control without requiring physical access to the device
+- Realistic operational pattern — field technicians can tune devices remotely
+
+---
+
+## 4. Event-Driven Alerting on Specific Detections
+
+### Problem
+
+All inference results are published to a single `camera/inference` MQTT topic as raw JSON and displayed in the dashboard message feed. There is no distinction between a routine background frame and a significant detection event (e.g., a person entering a restricted area). Consumers of the data must filter all messages themselves.
+
+### Solution
+
+Add a configurable alert rules system to `InferenceHandlerCore`. When a detection matches a configured class above a configured threshold, publish an enriched alert message to a dedicated `camera/alerts` IoT Core topic. Wire this downstream to SNS for email/SMS notification.
+
+### Implementation
+
+**Recipe configuration additions:**
+
+```yaml
+AlertRules:
+  - class: "person"
+    threshold: 0.7
+  - class: "vehicle"
+    threshold: 0.6
+AlertTopic: "camera/alerts"
+```
+
+**In `inference_handler_core.py`:**
+
+```python
+def check_alerts(self, detections):
+    for rule in self.config['alert_rules']:
+        for detection in detections.values():
+            if (detection['detection_classes'] == rule['class'] and
+                    detection['detection_scores'] >= rule['threshold']):
+                self.publish_alert(detection, rule)
+
+def publish_alert(self, detection, rule):
+    alert = {
+        "timestamp": datetime.datetime.utcnow().isoformat(),
+        "triggered_class": detection['detection_classes'],
+        "score": float(detection['detection_scores']),
+        "rule": rule,
+        "image_s3_key": "camera/latest-inference.jpg"
+    }
+    self.ipc_client.publish_to_iot_core(
+        topic_name=self.config['alert_topic'],
+        qos='1',
+        payload=json.dumps(alert).encode('utf-8')
+    )
+```
+
+**AWS-side:**
+- Create an IoT Core Rule that forwards `camera/alerts` messages to an SNS topic
+- SNS delivers email/SMS notifications to subscribed endpoints
+- Alert rules are updatable at runtime via Device Shadow (see recommendation 3)
+
+### Value
+
+- Highest demo impact: audience can see a real-world detection trigger a cloud notification in real time
+- Directly applicable to security, safety, and industrial inspection use cases
+- Demonstrates the full edge-to-cloud event pipeline without any server-side infrastructure (IoT Rules + SNS is fully managed)
+- Alert rules configured via Device Shadow make the system tuneable without redeployment
+
+---
+
+## 5. Dashboard Bounding Box Overlay as Interactive Data
+
+### Problem
+
+The React dashboard displays the inference result as a JPEG with bounding boxes baked into the pixels by the `InferenceHandlerCore`. The detection metadata (class names, confidence scores, box coordinates) is published separately as JSON on the `camera/inference` MQTT topic and currently displayed only as raw JSON text in the message feed. The two data streams are not connected in the UI.
+
+### Solution
+
+Separate the visualisation from the edge processing. Upload the **raw** (unannotated) image to S3, and render bounding boxes in the browser using the detection JSON from MQTT. This makes the overlay interactive and decouples the UI presentation from the edge component.
+
+### Implementation
+
+**Edge changes (`inference_handler_core.py`):**
+- Upload the original (pre-annotation) image to S3 instead of the annotated version
+- Include normalised bounding box coordinates in the MQTT JSON payload:
+
+```python
+json_result[i] = {
+    "detection_classes": detected_class_name,
+    "detection_scores": float(score),
+    "box": {
+        "ymin": float(box[0]), "xmin": float(box[1]),
+        "ymax": float(box[2]), "xmax": float(box[3])
+    },
+    "num_detections": int(num_detections[0])
+}
+```
+
+**Dashboard changes (`ImageGallery.tsx` / new `DetectionOverlay.tsx`):**
+- Render the S3 image in an `<img>` element inside a relatively-positioned container
+- Overlay an `<svg>` or `<canvas>` element at the same dimensions
+- Draw bounding boxes from the latest MQTT message using the normalised coordinates
+- On hover over a bounding box, show a tooltip with class name and confidence score
+- Colour-code boxes by class (consistent colour per class name using a hash)
+
+```tsx
+// Scale normalised coords to rendered image dimensions
+const scaleBox = (box, imgWidth, imgHeight) => ({
+  x: box.xmin * imgWidth,
+  y: box.ymin * imgHeight,
+  width: (box.xmax - box.xmin) * imgWidth,
+  height: (box.ymax - box.ymin) * imgHeight,
+});
+```
+
+### Value
+
+- Transforms the dashboard from a passive image viewer into an interactive AI results display
+- Demonstrates that the edge and cloud components are genuinely connected — new detections update the overlay in real time via MQTT
+- Removes bounding box rendering from the constrained edge device, reducing CPU load
+- Opens the door to dashboard-side filtering: users can toggle visibility of specific classes, set their own confidence threshold in the UI, and see the effect instantly without any device changes
+
+---
+
+## Additional Recommendations (Backlog)
+
+The following improvements were identified but are lower priority for the initial demo enhancement:
+
+| Improvement | Description |
+|---|---|
+| **Multi-model support** | Configure OVMS to serve multiple models (classification, segmentation, anomaly detection) simultaneously; parameterise the inference component to call different model endpoints |
+| **Greengrass Stream Manager** | Replace direct S3 uploads with Greengrass Stream Manager for reliable buffering, automatic retry, and bandwidth throttling during poor connectivity |
+| **Image history archiving** | Write timestamped images to `camera/history/YYYYMMDD_HHMMSS.jpg` alongside `latest-inference.jpg` with S3 Lifecycle Rules for automatic expiry |
+| **Inference metrics to CloudWatch** | Time each inference call; publish latency, detections-per-frame, and error rate via Greengrass telemetry to CloudWatch for fleet monitoring |
+| **Multi-device fleet dashboard** | Add a device selector to the React dashboard; namespace MQTT topics and S3 prefixes per `thingName` to support monitoring multiple edge devices from one UI |
+| **OTA model update pipeline** | CodePipeline + Lambda that watches an S3 model staging bucket, packages a new model as a Greengrass component version, and triggers a fleet deployment automatically |
+
+---
+
+*Document created: 2026-03-19*
