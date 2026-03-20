@@ -8,7 +8,7 @@ This document captures prioritised improvement ideas for the Ubuntu Core / AWS G
 
 | Priority | Improvement | Theme |
 |---|---|---|
-| 1 | [Confidence Threshold Filtering](#1-confidence-threshold-filtering) | Inference quality |
+| 1 | [Confidence Threshold Filtering](#1-confidence-threshold-filtering) ✓ | Inference quality |
 | 2 | [Motion-Triggered Inference](#2-motion-triggered-inference) | Edge intelligence |
 | 3 | [IoT Device Shadow for Runtime Configuration](#3-iot-device-shadow-for-runtime-configuration) | Cloud-to-edge control |
 | 4 | [Event-Driven Alerting on Specific Detections](#4-event-driven-alerting-on-specific-detections) | Real-world applicability |
@@ -20,6 +20,8 @@ This document captures prioritised improvement ideas for the Ubuntu Core / AWS G
 
 ## 1. Confidence Threshold Filtering
 
+> **Status: Implemented, not yet fully tested** — deployed with IoT Device Shadow integration for runtime control (see variation below).
+
 ### Problem
 
 The `InferenceHandlerCore` currently renders the top 10 detections unconditionally — a bounding box with a confidence score of 0.01 is drawn identically to one scored 0.99. This produces visually noisy output and undermines confidence in the AI results.
@@ -28,25 +30,89 @@ The `InferenceHandlerCore` currently renders the top 10 detections unconditional
 
 Add a configurable `confidence_threshold` parameter to the `InferenceHandlerCore` component. Only detections above this threshold are annotated on the image and included in the published MQTT payload.
 
+Rather than making the threshold purely a static deployment-time setting, the implementation combines the recipe configuration with an AWS IoT Device Shadow (`inference-config`) so the threshold can be adjusted at runtime from the React dashboard without any redeployment.
+
 ### Implementation
 
-- Add `ConfidenceThreshold` to the `DefaultConfiguration` in `com.example.InferenceHandlerCore-1.0.0.yaml` (suggested default: `0.5`)
-- Pass it as an environment variable in the recipe `Run` script
-- In `inference_handler_core.py`, read the threshold in `load_config()` and filter the detection loop in `run_inference()`:
+**Recipe (`com.example.InferenceHandlerCore-1.0.0.yaml`):**
+
+- `ConfidenceThreshold: "0.5"` added to `DefaultConfiguration`, passed as `CONFIDENCE_THRESHOLD` env var to the component
+- `aws.greengrass.ShadowManager` added as a component dependency
+- IPC access granted for `GetThingShadow` and `UpdateThingShadow` on the `inference-config` named shadow, and `SubscribeToTopic` on the shadow delta topic:
+
+```yaml
+aws.greengrass.ShadowManager:
+  com.example.InferenceHandlerCore:shadow:3:
+    policyDescription: 'Allows read and write access to the inference-config named shadow'
+    operations:
+      - 'aws.greengrass#GetThingShadow'
+      - 'aws.greengrass#UpdateThingShadow'
+    resources:
+      - '$aws/things/*/shadow/name/inference-config'
+```
+
+**`inference_handler_core.py` — three-phase shadow integration:**
+
+1. **Startup restore** — `load_shadow_config()` reads the `reported.confidence_threshold` from the shadow so the last operator-set value is applied immediately on component restart, taking precedence over the recipe default:
 
 ```python
+response = self.ipc_client.get_thing_shadow(
+    thing_name=self.thing_name, shadow_name='inference-config'
+)
+shadow = json.loads(response.payload)
+reported = shadow.get('state', {}).get('reported', {})
+if 'confidence_threshold' in reported:
+    self.config['confidence_threshold'] = float(reported['confidence_threshold'])
+```
+
+2. **Runtime delta subscription** — `run()` subscribes to the shadow delta topic so updates from the dashboard take effect immediately without restarting the component:
+
+```python
+delta_topic = f"$aws/things/{self.thing_name}/shadow/name/inference-config/update/delta"
+self.ipc_client.subscribe_to_topic(
+    topic=delta_topic,
+    on_stream_event=self.on_shadow_delta,
+    ...
+)
+```
+
+3. **Reported state sync** — after applying a delta (or on startup), `update_shadow_reported()` writes the active threshold back to `reported` so the shadow stays consistent and the dashboard always reflects the live device value.
+
+**Detection loop filter** in `run_inference()`:
+
+```python
+threshold = self.config['confidence_threshold']
 for i in range(self.config['detections_limit']):
     score = detection_scores[0, i]
-    if score < self.config['confidence_threshold']:
+    if score < threshold:
         continue
-    # ... draw box and add to result
+    # draw box and add to json_result
 ```
+
+**React dashboard (`ConfidenceThresholdControl.tsx` + `iotShadowService.ts`):**
+
+A slider control reads the current threshold from the `inference-config` named shadow on load (via `GetThingShadow`) and writes a `desired` state update (via `UpdateThingShadow`) when the operator clicks Apply. The IoT shadow service uses `IoTDataPlaneClient` with the Cognito-authenticated user credentials:
+
+```ts
+// Read current threshold
+const shadow = await client.send(new GetThingShadowCommand({ thingName, shadowName: 'inference-config' }));
+
+// Write new threshold
+await client.send(new UpdateThingShadowCommand({
+    thingName, shadowName: 'inference-config',
+    payload: JSON.stringify({ state: { desired: { confidence_threshold: threshold } } })
+}));
+```
+
+The component requires the operator to enter the IoT Thing Name in the dashboard — a `ThingNameInput` component was added alongside the threshold control.
 
 ### Value
 
 - Immediate improvement to visual output quality with minimal code change
-- Makes the threshold tuneable per deployment (e.g., stricter for industrial inspection, looser for general demos) without code changes
+- Threshold is tuneable live from the dashboard without any redeployment or device access — the delta is applied to the next inference frame
+- The `reported` state in the shadow means the dashboard always shows the threshold the device is actually using, not just what was last requested
 - Cleaner MQTT payloads reduce downstream noise in the dashboard message feed
+- Demonstrates the cloud-to-edge control pattern from recommendation 3, scoped to a single, immediately visible parameter
 
 ---
 
