@@ -336,7 +336,9 @@ class AWSResourcesSetup:
                         "iot:Subscribe",
                         "iot:Receive",
                         "iot:AttachPolicy",
-                        "iot:DescribeEndpoint"
+                        "iot:DescribeEndpoint",
+                        "iot:GetThingShadow",
+                        "iot:UpdateThingShadow"
                     ],
                     "Resource": "*"
                 }
