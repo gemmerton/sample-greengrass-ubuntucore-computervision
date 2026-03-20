@@ -120,7 +120,7 @@ The component requires the operator to enter the IoT Thing Name in the dashboard
 
 ### Problem
 
-The camera captures and submits an image to the inference pipeline every 10 seconds regardless of whether anything has changed in the scene. This wastes inference compute on the OpenVINO Model Server, generates unnecessary S3 uploads, and produces a flat, uninteresting stream of nearly identical images.
+The camera captures and submits an image to the inference pipeline every 30 seconds regardless of whether anything has changed in the scene. This wastes inference compute on the OpenVINO Model Server, generates unnecessary S3 uploads, and produces a flat, uninteresting stream of nearly identical images.
 
 ### Solution
 
@@ -130,9 +130,9 @@ Replace the fixed-interval capture loop with a continuous low-FPS capture loop t
 
 - In `camera_handler_core.py`, replace the `time.sleep` loop with a persistent `cv2.VideoCapture` session
 - Apply OpenCV background subtraction between frames using `cv2.createBackgroundSubtractorMOG2()`
-- Calculate the percentage of changed pixels against a configurable `motion_threshold`
+- Count the number of changed pixels in the foreground mask against a configurable `motion_threshold`
 - Only publish the image path to the `camera/images` MQTT topic when the threshold is exceeded
-- Add `MotionThreshold` and `MinMotionArea` to the recipe configuration
+- Add `MotionThreshold` to the recipe configuration
 
 ```python
 fgbg = cv2.createBackgroundSubtractorMOG2()
@@ -140,7 +140,7 @@ while True:
     ret, frame = cap.read()
     fgmask = fgbg.apply(frame)
     motion_area = cv2.countNonZero(fgmask)
-    if motion_area > self.config['min_motion_area']:
+    if motion_area > self.config['motion_threshold']:
         image_path = self.save_image(frame)
         self.publish_image_event(image_path)
     time.sleep(self.config['frame_interval'])
@@ -169,13 +169,16 @@ Integrate AWS IoT Device Shadow with both Greengrass components so that configur
 
 - Add `aws.greengrass.ShadowManager` as a dependency in both component recipes
 - Grant each component IPC access to read and update the local device shadow
-- In each component's main loop, subscribe to shadow delta events:
+- In each component's main loop, subscribe to shadow delta events via the MQTT delta topic using `subscribe_to_topic` (the same pattern used in item 1's implemented `InferenceHandlerCore`):
 
 ```python
-self.ipc_client.subscribe_to_shadow_named_shadow_update_events(
-    thing_name=os.environ.get('AWS_IOT_THING_NAME'),
-    shadow_name='camera-config',
-    on_stream_event=self.on_shadow_delta
+thing_name = os.environ.get('AWS_IOT_THING_NAME')
+delta_topic = f"$aws/things/{thing_name}/shadow/name/camera-config/update/delta"
+self.ipc_client.subscribe_to_topic(
+    topic=delta_topic,
+    on_stream_event=self.on_shadow_delta,
+    on_stream_error=self.on_stream_error,
+    on_stream_closed=self.on_stream_closed
 )
 ```
 
@@ -363,6 +366,8 @@ docker run -u 0 -d \
   --port 9000
 ```
 
+> **Ubuntu Core note:** The `{artifacts:decompressedPath}` path resolves to a Greengrass-managed artifact store, which is accessible on Ubuntu Core. This is appropriate for the bundled-artifact approach shown here. When integrating with the S3Downloader component (see recommendation 7), the models directory must be writable — switch the Docker mount to `{work:path}/models` instead, which is a Greengrass-managed writable directory scoped to this component and works on both Ubuntu Core and standard Linux.
+
 **`InferenceHandlerCore` changes:**
 
 Introduce a pipeline concept where multiple model calls are chained per frame:
@@ -442,14 +447,14 @@ When a download completes, the model is automatically registered in a named IoT 
           "model_id": "faster_rcnn_v2",
           "model_name": "Faster R-CNN",
           "model_version": "2.0",
-          "local_path": "/data/models/faster_rcnn",
+          "local_path": "<greengrass_work_root>/com.example.OpenVINOModelServerContainerCore/models/faster_rcnn",
           "last_updated": 1710000000
         },
         "efficientnet": {
           "model_id": "efficientnet",
           "model_name": "EfficientNet B0",
           "model_version": "1.0",
-          "local_path": "/data/models/efficientnet",
+          "local_path": "<greengrass_work_root>/com.example.OpenVINOModelServerContainerCore/models/efficientnet",
           "last_updated": 1710000100
         }
       }
@@ -457,6 +462,34 @@ When a download completes, the model is automatically registered in a named IoT 
   }
 }
 ```
+
+### Ubuntu Core Compatibility
+
+Ubuntu Core uses a read-only root filesystem — directories such as `/data/` do not exist and cannot be created at runtime. All path references in this recommendation must use Greengrass-managed writable locations instead.
+
+**`{work:path}` in the OVMS recipe**
+
+The Greengrass recipe variable `{work:path}` resolves to a component-scoped writable directory managed entirely by Greengrass. Use this for the Docker volume mount in the `OpenVINOModelServerContainerCore` recipe — it works on both Ubuntu Core and standard Linux installations:
+
+| System | `{work:path}` resolves to |
+|---|---|
+| Standard Linux (Greengrass installed at `/greengrass/v2`) | `/greengrass/v2/work/com.example.OpenVINOModelServerContainerCore/` |
+| Ubuntu Core (Greengrass snap) | `/var/snap/aws-iot-greengrass/current/greengrass/v2/work/com.example.OpenVINOModelServerContainerCore/` |
+
+**Cross-component download destination**
+
+The S3Downloader runs as a separate component and cannot reference the OVMS component's `{work:path}` directly in its MQTT download commands. The `destination` field in each download command must be set to the OVMS component's resolved work path. The placeholder `<greengrass_work_root>` used in the examples below refers to this base:
+
+- Standard Linux: `/greengrass/v2/work`
+- Ubuntu Core: `/var/snap/aws-iot-greengrass/current/greengrass/v2/work`
+
+The `deploy_greengrass_components.py` script should detect the correct base path at deploy time (e.g., by reading the Greengrass root from configuration or probing the filesystem) and substitute it when publishing download commands.
+
+**`s5cmd` binary availability**
+
+The S3Downloader component uses `s5cmd` for concurrent S3 transfers. On Ubuntu Core, `apt install` is not available, so `s5cmd` must be bundled as an artifact within the S3Downloader component itself. Before deploying, verify that the [aws-samples/sample-model-downloader-greengrass-component](https://github.com/aws-samples/sample-model-downloader-greengrass-component) bundles a pre-compiled `s5cmd` binary matching your device architecture (`amd64` or `arm64`). If it does not, a compiled binary for the target architecture must be added as a component artifact.
+
+---
 
 ### Integration with This Solution
 
@@ -467,7 +500,7 @@ When a download completes, the model is automatically registered in a named IoT 
 ```yaml
 # Updated OpenVINOModelServerContainerCore recipe run script
 docker run -u 0 -d \
-  -v /data/models:/models \
+  -v {work:path}/models:/models \
   -v {artifacts:path}/models_config.json:/config/models_config.json \
   -p 9000:9000 \
   openvino/model_server:latest \
@@ -482,7 +515,7 @@ docker run -u 0 -d \
   "command": "download",
   "bucket": "your-model-bucket",
   "key": "models/faster_rcnn/",
-  "destination": "/data/models/faster_rcnn",
+  "destination": "<greengrass_work_root>/com.example.OpenVINOModelServerContainerCore/models/faster_rcnn",
   "model_meta": {
     "model_id": "faster_rcnn",
     "model_name": "Faster R-CNN",
@@ -504,7 +537,7 @@ Upload model to S3
 Publish download command to s3downloader/{thingName}/commands
        │
        ▼
-S3Downloader pulls model to /data/models/ with progress updates
+S3Downloader pulls model to OVMS component work directory with progress updates
        │
        ▼
 Model registered in "models" Device Shadow
