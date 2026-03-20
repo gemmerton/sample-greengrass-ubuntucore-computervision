@@ -76,6 +76,8 @@ self.ipc_client.subscribe_to_topic(
 )
 ```
 
+> **Testing gap — shadow delta message format:** The AWS IoT Core shadow delta MQTT message wraps changed values under a `state` key: `{"version": N, "timestamp": N, "state": {"confidence_threshold": 0.7}, "metadata": {...}}`. The `on_shadow_delta` handler must therefore read `delta.get('state', {}).get('confidence_threshold')`, not `delta.get('confidence_threshold')` directly. The current implementation checks at the wrong level, meaning runtime threshold updates from the dashboard are silently ignored. This is the most likely cause of the "not yet fully tested" status and should be the first fix applied.
+
 3. **Reported state sync** — after applying a delta (or on startup), `update_shadow_reported()` writes the active threshold back to `reported` so the shadow stays consistent and the dashboard always reflects the live device value.
 
 **Detection loop filter** in `run_inference()`:
@@ -132,12 +134,15 @@ Replace the fixed-interval capture loop with a continuous low-FPS capture loop t
 - Apply OpenCV background subtraction between frames using `cv2.createBackgroundSubtractorMOG2()`
 - Count the number of changed pixels in the foreground mask against a configurable `motion_threshold`
 - Only publish the image path to the `camera/images` MQTT topic when the threshold is exceeded
-- Add `MotionThreshold` to the recipe configuration
+- Add `MotionThreshold` and `FrameInterval` to the recipe configuration
 
 ```python
+cap = cv2.VideoCapture(self.config['camera_index'])  # persistent session, opened once
 fgbg = cv2.createBackgroundSubtractorMOG2()
 while True:
     ret, frame = cap.read()
+    if not ret:
+        continue  # skip failed reads rather than passing None to fgbg.apply()
     fgmask = fgbg.apply(frame)
     motion_area = cv2.countNonZero(fgmask)
     if motion_area > self.config['motion_threshold']:
@@ -251,6 +256,28 @@ def publish_alert(self, detection, rule):
     )
 ```
 
+**Recipe access control — two additions required:**
+
+1. Add `camera/alerts` to the `mqttproxy` permitted resources. Without this, the Greengrass IPC broker will reject the `publish_to_iot_core` call with an authorization error:
+
+```yaml
+aws.greengrass.ipc.mqttproxy:
+  com.example.InferenceHandlerCore:mqttproxy:2:
+    operations:
+      - 'aws.greengrass#PublishToIoTCore'
+    resources:
+      - 'camera/inference'
+      - 'camera/alerts'   # ADD this line
+```
+
+2. `AlertRules` is a YAML list-of-objects and cannot be passed as an environment variable string. Read the full component configuration via the Greengrass IPC configuration service instead of env vars:
+
+```python
+response = self.ipc_client.get_configuration(key_path=[])
+self.config['alert_rules'] = response.value.get('AlertRules', [])
+self.config['alert_topic'] = response.value.get('AlertTopic', 'camera/alerts')
+```
+
 **AWS-side:**
 - Create an IoT Core Rule that forwards `camera/alerts` messages to an SNS topic
 - SNS delivers email/SMS notifications to subscribed endpoints
@@ -282,12 +309,16 @@ Separate the visualisation from the edge processing. Upload the **raw** (unannot
 - Include normalised bounding box coordinates in the MQTT JSON payload:
 
 ```python
+# detection_boxes[0, i] contains raw model output in 0-1 normalised form [ymin, xmin, ymax, xmax]
+# Do NOT use normalized_detection_boxes[0, i] here — despite its name that variable is
+# pixel-scaled (multiplied by image height/width) and will break the React scaleBox calculation.
+raw_box = detection_boxes[0, i]
 json_result[i] = {
     "detection_classes": detected_class_name,
     "detection_scores": float(score),
     "box": {
-        "ymin": float(box[0]), "xmin": float(box[1]),
-        "ymax": float(box[2]), "xmax": float(box[3])
+        "ymin": float(raw_box[0]), "xmin": float(raw_box[1]),
+        "ymax": float(raw_box[2]), "xmax": float(raw_box[3])
     },
     "num_detections": int(num_detections[0])
 }
@@ -495,18 +526,26 @@ The S3Downloader component uses `s5cmd` for concurrent S3 transfers. On Ubuntu C
 
 **Step 1 — Deploy the S3Downloader component** alongside the existing three components. Add it to `deploy_greengrass_components.py` and grant the Greengrass Token Exchange Role `s3:GetObject` and `s3:ListBucket` on the model S3 bucket.
 
-**Step 2 — Remove model artifacts from `OpenVINOModelServerContainerCore`**. Strip the `object_detection_model.zip` artifact from the recipe. Instead, OVMS mounts a local directory that the S3Downloader populates:
+**Step 2 — Remove model artifacts from `OpenVINOModelServerContainerCore`**. Strip the `object_detection_model.zip` artifact from the recipe. Instead, OVMS mounts a local directory that the S3Downloader populates. The models directory must be created in the `Install` lifecycle before OVMS starts — if it does not exist, the Docker volume mount will fail:
 
 ```yaml
-# Updated OpenVINOModelServerContainerCore recipe run script
-docker run -u 0 -d \
-  -v {work:path}/models:/models \
-  -v {artifacts:path}/models_config.json:/config/models_config.json \
-  -p 9000:9000 \
-  openvino/model_server:latest \
-  --config_path /config/models_config.json \
-  --port 9000
+# OpenVINOModelServerContainerCore recipe Install + Run lifecycle
+Install:
+  Script: "mkdir -p {work:path}/models"
+Run:
+  requiresPrivilege: true
+  Script: |
+    docker run -u 0 -d \
+      -v {work:path}/models:/models \
+      -v {artifacts:path}/models_config.json:/config/models_config.json \
+      -p 9000:9000 \
+      openvino/model_server:latest \
+      --config_path /config/models_config.json \
+      --file_system_poll_wait_seconds 5 \
+      --port 9000
 ```
+
+> The `--file_system_poll_wait_seconds 5` flag instructs OVMS to poll the model directories for new models, allowing it to start successfully with an empty `/models` directory and pick up models as the S3Downloader delivers them.
 
 **Step 3 — Trigger initial model downloads** from the deployment pipeline. After Greengrass deployment completes, `deploy_greengrass_components.py` publishes a download command per model via IoT Core:
 
@@ -525,6 +564,19 @@ docker run -u 0 -d \
 ```
 
 **Step 4 — Update `InferenceHandlerCore`** to discover available models from the `models` shadow before initialising the OVMS client, rather than relying on a hardcoded `MODEL_NAME` environment variable. This gives the component a live inventory of what is actually present on disk.
+
+> **Recipe change required:** The InferenceHandlerCore's `ShadowManager` access control currently only permits the `inference-config` shadow. Reading the `models` shadow requires adding `$aws/things/*/shadow/name/models` to the same policy:
+>
+> ```yaml
+> aws.greengrass.ShadowManager:
+>   com.example.InferenceHandlerCore:shadow:3:
+>     operations:
+>       - 'aws.greengrass#GetThingShadow'
+>       - 'aws.greengrass#UpdateThingShadow'
+>     resources:
+>       - '$aws/things/*/shadow/name/inference-config'
+>       - '$aws/things/*/shadow/name/models'   # ADD this line
+> ```
 
 **Step 5 — Model updates without redeployment**. To push a new model version, upload the model files to S3 and publish a download command — no Greengrass deployment required. The S3Downloader handles the transfer, updates the shadow, and the inference component picks up the new model on its next shadow read or via a Device Shadow delta (recommendation 3).
 
