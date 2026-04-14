@@ -9,12 +9,12 @@ This document captures prioritised improvement ideas for the Ubuntu Core / AWS G
 | Priority | Improvement | Theme |
 |---|---|---|
 | 1 | [Confidence Threshold Filtering](#1-confidence-threshold-filtering) ✓ | Inference quality |
-| 2 | [Motion-Triggered Inference](#2-motion-triggered-inference) | Edge intelligence |
-| 3 | [IoT Device Shadow for Runtime Configuration](#3-iot-device-shadow-for-runtime-configuration) | Cloud-to-edge control |
+| 2 | [IoT Device Shadow for Runtime Configuration](#3-iot-device-shadow-for-runtime-configuration) | Cloud-to-edge control |
+| 3 | [Model Delivery via Ubuntu Inference Snaps](#7-model-delivery-via-ubuntu-inference-snaps) | Model lifecycle management |
 | 4 | [Event-Driven Alerting on Specific Detections](#4-event-driven-alerting-on-specific-detections) | Real-world applicability |
-| 5 | [Dashboard Bounding Box Overlay as Interactive Data](#5-dashboard-bounding-box-overlay-as-interactive-data) | Visualisation |
-| 6 | [Multi-Model Support via OpenVINO Model Server](#6-multi-model-support-via-openvino-model-server) | AI capability breadth |
-| 7 | [Model Download Management via S3Downloader Component](#7-model-download-management-via-s3downloader-component) | Model lifecycle management |
+| 5 | [Motion-Triggered Inference](#2-motion-triggered-inference) | Edge intelligence |
+| 6 | [Dashboard Bounding Box Overlay as Interactive Data](#5-dashboard-bounding-box-overlay-as-interactive-data) | Visualisation |
+| 7 | [Multi-Model Support via OpenVINO Model Server](#6-multi-model-support-via-openvino-model-server) | AI capability breadth |
 
 ---
 
@@ -440,7 +440,7 @@ A lightweight `com.example.ModelManagerCore` component could be added to handle 
 
 ---
 
-## 7. Model Download Management via S3Downloader Component
+## 7. Model Delivery via Ubuntu Inference Snaps
 
 ### Problem
 
@@ -450,43 +450,147 @@ The current solution bundles the AI model as a ZIP artifact inside the `OpenVINO
 - Every model update requires a full component redeployment, which re-uploads the entire artifact to S3 and re-pushes it to the device
 - There is no visibility into download progress or the ability to pause, resume, or cancel a transfer
 - The device has no registry of which models are available locally, making dynamic model switching (recommendation 3) fragile
+- The Docker-based OVMS container adds operational overhead on Ubuntu Core: image pulls, storage driver configuration, and privilege escalation via `requiresPrivilege: true`
+
+### Assessment: Ubuntu Inference Snaps
+
+[Ubuntu Inference Snaps](https://documentation.ubuntu.com/inference-snaps/) are Canonical's mechanism for packaging and distributing AI models as first-class snap packages on Ubuntu. Each inference snap maps to a single fine-tuned model and bundles multiple inference engines optimised for different silicon. During installation, the snap automatically detects the underlying hardware (CPU, GPU, NPU) and selects the best-matching engine, runtime, and quantised model weights without manual configuration.
+
+**Architecture overview:**
+
+An inference snap contains:
+
+- **Engine manifests** describing hardware requirements (architecture, memory, GPU/NPU type) for each optimisation variant
+- **Engine manager** that matches engines to detected hardware, installs the selected engine, and manages lifecycle
+- **Inference engine** (only one active at a time) comprising a runtime (e.g., llama.cpp HTTP server, OpenVINO Model Server) and the model weights
+- **CLI** (`modelctl`) for engine selection, configuration, and status reporting
+
+Each engine and model weights set is packaged as a snap **component** — an independently installable part of the snap. Only the components matching the detected hardware are downloaded, reducing transfer size and disk usage.
+
+Once installed, the snap exposes an OpenAI-compatible HTTP API (e.g., `http://localhost:9090/v1`) that any local process can call for inference.
+
+**Current snap catalogue (as of April 2026):**
+
+| Snap | Model Type | Intel CPU | Intel GPU | Intel NPU | NVIDIA GPU | ARM64 |
+|---|---|---|---|---|---|---|
+| DeepSeek R1 | Reasoning LLM | Yes | Yes | Yes | Yes | Ampere |
+| Gemma 3 | Vision-Language LLM | Yes | Yes | - | Yes | Yes |
+| Nemotron 3 Nano | General LLM | Yes (generic) | - | - | Yes | Yes |
+| Qwen VL | Vision-Language Model | Yes | Yes | Yes | Yes | Ampere |
+
+**Relevance to this solution:**
+
+The existing catalogue targets generative AI (LLMs and VLMs), not the computer vision object detection models (Faster R-CNN, EfficientNet, PADIM) used in this demo. However, the inference snap framework is model-agnostic — Canonical's [tutorial for creating custom inference snaps](https://documentation.ubuntu.com/inference-snaps/tutorial/create-inference-snap) demonstrates packaging arbitrary models with custom runtimes. OpenVINO Model Server is explicitly listed as a supported runtime for Intel GPU/NPU engines.
+
+This means the solution can package its own computer vision models as custom inference snaps, gaining automatic hardware detection, silicon-optimised engine selection, and snap-based lifecycle management — while retaining the OpenVINO runtime already in use.
 
 ### Solution
 
-Integrate the [aws-samples/sample-model-downloader-greengrass-component](https://github.com/aws-samples/sample-model-downloader-greengrass-component) as an additional Greengrass component (`aws.samples.S3Downloader`). This component decouples model files from the component deployment lifecycle entirely: models live in S3 and are pulled to the device on demand via MQTT commands, with progress tracked and model metadata persisted in an IoT Device Shadow.
+Replace the Docker-based `OpenVINOModelServerContainerCore` Greengrass component with a custom Ubuntu Inference Snap that packages the computer vision models with OpenVINO Model Server as the runtime. Use the S3Downloader component from [aws-samples/sample-model-downloader-greengrass-component](https://github.com/aws-samples/sample-model-downloader-greengrass-component) to deliver model weight updates to the snap's writable storage, decoupling model updates from both snap refreshes and Greengrass redeployments.
+
+This hybrid approach uses inference snaps for the runtime and initial model delivery, and S3Downloader for cloud-triggered model updates via MQTT.
 
 ### How It Works
 
-The S3Downloader component (`aws.samples.S3Downloader`) runs as a persistent service on the device and exposes a three-topic MQTT interface:
+**Custom inference snap: `cv-inference`**
+
+A custom inference snap is built following the [Canonical inference snap framework](https://documentation.ubuntu.com/inference-snaps/tutorial/create-inference-snap). The snap packages:
+
+1. **Engine manifests** for each target hardware configuration:
+
+```yaml
+# engines/intel-gpu/engine.yaml
+name: intel-gpu
+description: OpenVINO Model Server optimised for Intel integrated and discrete GPUs
+vendor: Demo Project
+grade: stable
+devices:
+  anyof:
+    - type: gpu
+      vendor: intel
+      architecture: amd64
+memory: 4G
+disk-space: 2G
+components:
+  - ovms-intel-gpu
+  - model-faster-rcnn
+```
+
+```yaml
+# engines/generic-cpu/engine.yaml
+name: generic-cpu
+description: OpenVINO Model Server on CPU (fallback)
+vendor: Demo Project
+grade: stable
+devices:
+  anyof:
+    - type: cpu
+      architecture: amd64
+memory: 4G
+disk-space: 2G
+components:
+  - ovms-cpu
+  - model-faster-rcnn
+```
+
+2. **Snap components** for runtimes and model weights:
+
+| Component | Contents | Purpose |
+|---|---|---|
+| `ovms-intel-gpu` | OpenVINO Model Server built with GPU plugin | Intel GPU-optimised inference runtime |
+| `ovms-cpu` | OpenVINO Model Server CPU-only build | Fallback runtime for any amd64 CPU |
+| `model-faster-rcnn` | Faster R-CNN IR model files | Default object detection model |
+| `model-efficientnet` | EfficientNet IR model files | Classification model (recommendation 6) |
+
+3. **Server wrapper** that starts OVMS with the selected engine's configuration:
+
+```bash
+# engines/intel-gpu/server
+#!/bin/bash -eux
+port="$(modelctl get http.port)"
+exec ovms --config_path "$SNAP_COMPONENTS/ovms-intel-gpu/models_config.json" \
+     --port "$port" \
+     --file_system_poll_wait_seconds 5
+```
+
+4. **Install hook** for automatic hardware detection and engine selection:
+
+```bash
+# snap/hooks/install
+#!/bin/bash -eu
+modelctl set --package http.port="9000"
+if snapctl is-connected hardware-observe; then
+    modelctl use-engine --auto --assume-yes
+fi
+```
+
+**On installation**, the snap detects whether the device has an Intel GPU, NPU, or only a CPU, and installs only the matching runtime component and model weights. The inference server starts automatically as a `systemd` service managed by `snapd`, exposing the gRPC endpoint on port 9000 — the same interface the existing `InferenceHandlerCore` already uses.
+
+**S3Downloader for cloud-triggered model updates**
+
+The [aws-samples/sample-model-downloader-greengrass-component](https://github.com/aws-samples/sample-model-downloader-greengrass-component) (`aws.samples.S3Downloader`) runs alongside the snap as a Greengrass component. It exposes a three-topic MQTT interface:
 
 | Topic | Direction | Purpose |
 |---|---|---|
-| `s3downloader/{thingName}/commands` | Cloud → Device | Trigger download, pause, resume, cancel, list |
-| `s3downloader/{thingName}/responses` | Device → Cloud | Command acknowledgement with `downloadId` |
-| `s3downloader/{thingName}/status` | Device → Cloud | Real-time progress updates |
+| `s3downloader/{thingName}/commands` | Cloud to Device | Trigger download, pause, resume, cancel, list |
+| `s3downloader/{thingName}/responses` | Device to Cloud | Command acknowledgement with `downloadId` |
+| `s3downloader/{thingName}/status` | Device to Cloud | Real-time progress updates |
 
-Downloads use **s5cmd** under the hood — a concurrent S3 transfer tool — with configurable parallelism and exponential backoff retry (up to 10 attempts), making it robust over unreliable edge connectivity.
+Downloads use **s5cmd** for concurrent S3 transfers with configurable parallelism and exponential backoff retry (up to 10 attempts).
 
-When a download completes, the model is automatically registered in a named IoT Device Shadow called `models`:
+When a download completes, the model is registered in a named IoT Device Shadow called `models`:
 
 ```json
 {
   "state": {
     "reported": {
       "models": {
-        "faster_rcnn_v2": {
-          "model_id": "faster_rcnn_v2",
+        "faster_rcnn": {
+          "model_id": "faster_rcnn",
           "model_name": "Faster R-CNN",
           "model_version": "2.0",
-          "local_path": "<greengrass_work_root>/com.example.OpenVINOModelServerContainerCore/models/faster_rcnn",
+          "local_path": "/var/snap/cv-inference/common/models/faster_rcnn",
           "last_updated": 1710000000
-        },
-        "efficientnet": {
-          "model_id": "efficientnet",
-          "model_name": "EfficientNet B0",
-          "model_version": "1.0",
-          "local_path": "<greengrass_work_root>/com.example.OpenVINOModelServerContainerCore/models/efficientnet",
-          "last_updated": 1710000100
         }
       }
     }
@@ -496,76 +600,61 @@ When a download completes, the model is automatically registered in a named IoT 
 
 ### Ubuntu Core Compatibility
 
-Ubuntu Core uses a read-only root filesystem — directories such as `/data/` do not exist and cannot be created at runtime. All path references in this recommendation must use Greengrass-managed writable locations instead.
+Ubuntu Core uses a read-only root filesystem. Inference snaps are fully compatible with Ubuntu Core because `snapd` manages all writable paths.
 
-**`{work:path}` in the OVMS recipe**
+**Snap writable paths**
 
-The Greengrass recipe variable `{work:path}` resolves to a component-scoped writable directory managed entirely by Greengrass. Use this for the Docker volume mount in the `OpenVINOModelServerContainerCore` recipe — it works on both Ubuntu Core and standard Linux installations:
+| Path | Purpose | Persistence |
+|---|---|---|
+| `$SNAP_COMMON` (`/var/snap/cv-inference/common/`) | Shared writable storage across snap revisions — used for downloaded model weights | Survives snap refreshes |
+| `$SNAP_DATA` (`/var/snap/cv-inference/current/`) | Per-revision writable storage — used for runtime configuration | Reset on snap refresh |
 
-| System | `{work:path}` resolves to |
-|---|---|
-| Standard Linux (Greengrass installed at `/greengrass/v2`) | `/greengrass/v2/work/com.example.OpenVINOModelServerContainerCore/` |
-| Ubuntu Core (Greengrass snap) | `/var/snap/aws-iot-greengrass/current/greengrass/v2/work/com.example.OpenVINOModelServerContainerCore/` |
+The S3Downloader writes model files to `$SNAP_COMMON/models/`, which persists across snap refreshes and is accessible to the OVMS process running inside the snap. The OVMS `--config_path` references this directory.
 
-**Cross-component download destination**
+**No Docker dependency**
 
-The S3Downloader runs as a separate component and cannot reference the OVMS component's `{work:path}` directly in its MQTT download commands. The `destination` field in each download command must be set to the OVMS component's resolved work path. The placeholder `<greengrass_work_root>` used in the examples below refers to this base:
-
-- Standard Linux: `/greengrass/v2/work`
-- Ubuntu Core: `/var/snap/aws-iot-greengrass/current/greengrass/v2/work`
-
-The `deploy_greengrass_components.py` script should detect the correct base path at deploy time (e.g., by reading the Greengrass root from configuration or probing the filesystem) and substitute it when publishing download commands.
+The inference snap replaces the Docker container entirely. OVMS runs as a native process within the snap's confinement, eliminating the need for `requiresPrivilege: true`, Docker image pulls, and Docker storage driver configuration on Ubuntu Core.
 
 **`s5cmd` binary availability**
 
-The S3Downloader component uses `s5cmd` for concurrent S3 transfers. On Ubuntu Core, `apt install` is not available, so `s5cmd` must be bundled as an artifact within the S3Downloader component itself. Before deploying, verify that the [aws-samples/sample-model-downloader-greengrass-component](https://github.com/aws-samples/sample-model-downloader-greengrass-component) bundles a pre-compiled `s5cmd` binary matching your device architecture (`amd64` or `arm64`). If it does not, a compiled binary for the target architecture must be added as a component artifact.
+On Ubuntu Core, `apt install` is not available. The `s5cmd` binary must be bundled as an artifact within the S3Downloader Greengrass component. Verify that the [aws-samples component](https://github.com/aws-samples/sample-model-downloader-greengrass-component) bundles a pre-compiled `s5cmd` binary matching the device architecture (`amd64` or `arm64`). If not, add a compiled binary as a component artifact.
 
 ---
 
 ### Integration with This Solution
 
-**Step 1 — Deploy the S3Downloader component** alongside the existing three components. Add it to `deploy_greengrass_components.py` and grant the Greengrass Token Exchange Role `s3:GetObject` and `s3:ListBucket` on the model S3 bucket.
+**Step 1 — Build and publish the `cv-inference` snap.** Follow the [Canonical inference snap tutorial](https://documentation.ubuntu.com/inference-snaps/tutorial/create-inference-snap) to create the snap with OpenVINO Model Server as the runtime and Faster R-CNN as the initial model. Define engine manifests for Intel GPU and CPU fallback. Publish to a private snap store channel or install locally via `--dangerous` during development.
 
-**Step 2 — Remove model artifacts from `OpenVINOModelServerContainerCore`**. Strip the `object_detection_model.zip` artifact from the recipe. Instead, OVMS mounts a local directory that the S3Downloader populates. The models directory must be created in the `Install` lifecycle before OVMS starts — if it does not exist, the Docker volume mount will fail:
+**Step 2 — Install the snap on the Ubuntu Core device.** On Ubuntu Core, install the snap and connect the required interfaces:
 
-```yaml
-# OpenVINOModelServerContainerCore recipe Install + Run lifecycle
-Install:
-  Script: "mkdir -p {work:path}/models"
-Run:
-  requiresPrivilege: true
-  Script: |
-    docker run -u 0 -d \
-      -v {work:path}/models:/models \
-      -v {artifacts:path}/models_config.json:/config/models_config.json \
-      -p 9000:9000 \
-      openvino/model_server:latest \
-      --config_path /config/models_config.json \
-      --file_system_poll_wait_seconds 5 \
-      --port 9000
+```bash
+sudo snap install cv-inference --channel=edge
+sudo snap connect cv-inference:hardware-observe
 ```
 
-> The `--file_system_poll_wait_seconds 5` flag instructs OVMS to poll the model directories for new models, allowing it to start successfully with an empty `/models` directory and pick up models as the S3Downloader delivers them.
+The install hook auto-detects hardware and selects the optimal engine. OVMS starts on port 9000 as a `systemd` service.
 
-**Step 3 — Trigger initial model downloads** from the deployment pipeline. After Greengrass deployment completes, `deploy_greengrass_components.py` publishes a download command per model via IoT Core:
+**Step 3 — Deploy the S3Downloader Greengrass component** alongside the existing `CameraHandlerCore` and `InferenceHandlerCore` components. Add it to `deploy_greengrass_components.py` and grant the Greengrass Token Exchange Role `s3:GetObject` and `s3:ListBucket` on the model S3 bucket. Configure the download destination to the snap's common writable path:
 
 ```json
 {
   "command": "download",
   "bucket": "your-model-bucket",
   "key": "models/faster_rcnn/",
-  "destination": "<greengrass_work_root>/com.example.OpenVINOModelServerContainerCore/models/faster_rcnn",
+  "destination": "/var/snap/cv-inference/common/models/faster_rcnn",
   "model_meta": {
     "model_id": "faster_rcnn",
     "model_name": "Faster R-CNN",
-    "model_version": "1.0"
+    "model_version": "2.0"
   }
 }
 ```
 
-**Step 4 — Update `InferenceHandlerCore`** to discover available models from the `models` shadow before initialising the OVMS client, rather than relying on a hardcoded `MODEL_NAME` environment variable. This gives the component a live inventory of what is actually present on disk.
+**Step 4 — Remove the `OpenVINOModelServerContainerCore` Greengrass component.** The inference snap replaces it entirely. Remove the component from `deploy_greengrass_components.py` and delete the recipe and Docker-related artifacts.
 
-> **Recipe change required:** The InferenceHandlerCore's `ShadowManager` access control currently only permits the `inference-config` shadow. Reading the `models` shadow requires adding `$aws/things/*/shadow/name/models` to the same policy:
+**Step 5 — Update `InferenceHandlerCore`** to connect to the snap's OVMS endpoint at `localhost:9000` (unchanged from the current Docker setup). Discover available models from the `models` Device Shadow rather than relying on a hardcoded `MODEL_NAME` environment variable.
+
+> **Recipe change required:** Add the `models` shadow to the InferenceHandlerCore's ShadowManager access control:
 >
 > ```yaml
 > aws.greengrass.ShadowManager:
@@ -575,44 +664,58 @@ Run:
 >       - 'aws.greengrass#UpdateThingShadow'
 >     resources:
 >       - '$aws/things/*/shadow/name/inference-config'
->       - '$aws/things/*/shadow/name/models'   # ADD this line
+>       - '$aws/things/*/shadow/name/models'
 > ```
 
-**Step 5 — Model updates without redeployment**. To push a new model version, upload the model files to S3 and publish a download command — no Greengrass deployment required. The S3Downloader handles the transfer, updates the shadow, and the inference component picks up the new model on its next shadow read or via a Device Shadow delta (recommendation 3).
+**Step 6 — Model updates without redeployment.** To push a new model version, upload the model files to S3 and publish a download command via MQTT. The S3Downloader handles the transfer, updates the shadow, and OVMS picks up the new model via filesystem polling. No Greengrass deployment or snap refresh required.
 
 ### New Deployment Flow
 
 ```
-Upload model to S3
-       │
-       ▼
-Publish download command to s3downloader/{thingName}/commands
-       │
-       ▼
-S3Downloader pulls model to OVMS component work directory with progress updates
-       │
-       ▼
+Build cv-inference snap with OVMS + initial model weights
+       |
+       v
+Install snap on Ubuntu Core device (auto hardware detection)
+       |
+       v
+OVMS starts as systemd service on port 9000
+       |
+       v
+S3Downloader Greengrass component deployed alongside
+       |
+       v
+Cloud publishes download command to s3downloader/{thingName}/commands
+       |
+       v
+S3Downloader pulls model to /var/snap/cv-inference/common/models/
+       |
+       v
 Model registered in "models" Device Shadow
-       │
-       ▼
-OVMS picks up new model from mounted /models directory
-       │
-       ▼
-InferenceHandlerCore reads shadow → switches active model
+       |
+       v
+OVMS picks up new model via filesystem polling
+       |
+       v
+InferenceHandlerCore reads shadow, switches active model
 ```
 
 ### Value
 
-- Removes the 5 GB artifact size ceiling entirely — models of any size can be deployed
-- Model updates become a lightweight S3 upload + MQTT command, with no Greengrass redeployment and no downtime
-- Real-time download progress is visible in the dashboard message feed via the status topic, making large model deployments transparent to operators
-- The `models` Device Shadow gives the cloud a live inventory of exactly which model versions are present on every device in the fleet
-- Directly enables the multi-model pipeline in recommendation 6 — each model in the pipeline can be downloaded and updated independently
-- Pairs naturally with the OTA model update pipeline (backlog) — CodePipeline uploads to S3 and fires the MQTT command, completing the full MLOps loop without ever touching a Greengrass deployment
+- Eliminates Docker from the edge device — OVMS runs as a native snap-confined process, reducing operational complexity and removing the `requiresPrivilege: true` requirement
+- Automatic hardware detection selects the optimal OpenVINO runtime (GPU, NPU, or CPU) at install time without manual configuration
+- Snap-based delivery integrates natively with Ubuntu Core's update and confinement model — `snapd` handles rollback, delta updates, and transactional refreshes
+- Model updates via S3Downloader remain decoupled from both snap refreshes and Greengrass redeployments — a lightweight S3 upload + MQTT command delivers new model versions with real-time progress tracking
+- The `models` Device Shadow gives the cloud a live inventory of which model versions are present on every device in the fleet
+- Directly enables the multi-model pipeline in recommendation 6 — each model can be delivered as a snap component or downloaded independently via S3
+- Demonstrates the convergence of Canonical's inference snap ecosystem with AWS IoT Greengrass for edge AI — a compelling story for audiences interested in Ubuntu Core + AWS edge deployments
+- Positions the solution to adopt future Canonical inference snap catalogue models (vision-language models, anomaly detection) as they become available with Intel-optimised engines
 
 ### Reference
 
-- Repository: [aws-samples/sample-model-downloader-greengrass-component](https://github.com/aws-samples/sample-model-downloader-greengrass-component)
+- Inference Snaps documentation: [documentation.ubuntu.com/inference-snaps](https://documentation.ubuntu.com/inference-snaps/)
+- Inference Snaps source: [github.com/canonical/inference-snaps](https://github.com/canonical/inference-snaps)
+- Custom snap tutorial: [Create your first inference snap](https://documentation.ubuntu.com/inference-snaps/tutorial/create-inference-snap)
+- S3Downloader component: [aws-samples/sample-model-downloader-greengrass-component](https://github.com/aws-samples/sample-model-downloader-greengrass-component)
 
 ---
 
