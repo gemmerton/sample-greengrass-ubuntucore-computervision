@@ -126,16 +126,40 @@ class InferenceHandler():
         except Exception as e:
             logger.error("Failed to update shadow reported state: %s", e)
 
-    def on_shadow_delta(self, event: SubscriptionResponseMessage) -> None:
+    def on_shadow_delta(self, event) -> None:
         """Handle shadow delta updates to apply a new confidence threshold at runtime."""
         try:
-            delta = event.json_message.message
+            # IoT Core MQTT events deliver payload as bytes in event.message.payload
+            payload = event.message.payload
+            delta = json.loads(payload)
             logger.info("Shadow delta received: %s", delta)
-            if 'confidence_threshold' in delta:
-                new_threshold = float(delta['confidence_threshold'])
-                self.config['confidence_threshold'] = new_threshold
-                logger.info("Confidence threshold updated to: %s", new_threshold)
-                self.update_shadow_reported()
+
+            # AWS IoT Core wraps delta values under 'state' key
+            state = delta.get('state', {})
+            new_value = state.get('confidence_threshold')
+
+            # Fallback: handle case where value might be at top level (robustness)
+            if new_value is None:
+                new_value = delta.get('confidence_threshold')
+
+            if new_value is None:
+                logger.debug("Shadow delta does not contain confidence_threshold, ignoring")
+                return
+
+            # Validate threshold range
+            new_threshold = float(new_value)
+            if not (0.0 <= new_threshold <= 1.0):
+                logger.warning(
+                    "Received confidence_threshold out of range [0.0, 1.0]: %s, ignoring",
+                    new_threshold
+                )
+                return
+
+            self.config['confidence_threshold'] = new_threshold
+            logger.info("Confidence threshold updated to: %s", new_threshold)
+            self.update_shadow_reported()
+        except (ValueError, TypeError) as e:
+            logger.warning("Invalid confidence_threshold value in shadow delta: %s", e)
         except Exception:
             traceback.print_exc()
 
@@ -152,11 +176,12 @@ class InferenceHandler():
             )
             logger.info('Successfully subscribed to topic: ' + self.config['sub_topic'])
 
-            # Subscribe to shadow delta updates for runtime config changes
+            # Subscribe to shadow delta updates for runtime config changes (cloud MQTT)
             if self.thing_name:
                 delta_topic = f"$aws/things/{self.thing_name}/shadow/name/{SHADOW_NAME}/update/delta"
-                self.ipc_client.subscribe_to_topic(
-                    topic=delta_topic,
+                self.ipc_client.subscribe_to_iot_core(
+                    topic_name=delta_topic,
+                    qos='1',
                     on_stream_event=self.on_shadow_delta,
                     on_stream_error=self.on_stream_error,
                     on_stream_closed=self.on_stream_closed

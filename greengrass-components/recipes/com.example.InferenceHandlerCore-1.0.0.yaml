@@ -28,13 +28,18 @@ ComponentConfiguration:
     accessControl:
       aws.greengrass.ipc.pubsub:
         com.example.InferenceHandlerCore:pubsub:1:
-          policyDescription: 'Allows subscription to capture events and shadow delta updates'
+          policyDescription: 'Allows subscription to local capture events'
           operations:
             - 'aws.greengrass#SubscribeToTopic'
           resources:
             - 'camera/images'
-            - '$aws/things/*/shadow/name/inference-config/update/delta'
       aws.greengrass.ipc.mqttproxy:
+        com.example.InferenceHandlerCore:mqttproxy:1:
+          policyDescription: 'Allows subscription to cloud shadow delta updates'
+          operations:
+            - 'aws.greengrass#SubscribeToIoTCore'
+          resources:
+            - '$aws/things/*/shadow/name/inference-config/update/delta'
         com.example.InferenceHandlerCore:mqttproxy:2:
           policyDescription: 'Allows publication of inference results'
           operations:
