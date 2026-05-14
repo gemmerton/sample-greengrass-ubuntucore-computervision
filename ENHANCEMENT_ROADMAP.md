@@ -20,7 +20,7 @@ This document captures prioritised improvement ideas for the Ubuntu Core / AWS G
 
 ## 1. Confidence Threshold Filtering
 
-> **Status: Implemented, not yet fully tested** — deployed with IoT Device Shadow integration for runtime control (see variation below).
+> **Status: Complete** — confidence threshold filtering is implemented, tested, and working. Runtime threshold updates from the React dashboard are applied immediately via the IoT Device Shadow delta mechanism. The fix addresses the original shadow delta nesting level bug, switches the subscription to cloud MQTT (`subscribe_to_iot_core`), and includes property-based tests validating both the fix and preservation of existing behavior.
 
 ### Problem
 
@@ -69,14 +69,13 @@ if 'confidence_threshold' in reported:
 
 ```python
 delta_topic = f"$aws/things/{self.thing_name}/shadow/name/inference-config/update/delta"
-self.ipc_client.subscribe_to_topic(
-    topic=delta_topic,
+self.ipc_client.subscribe_to_iot_core(
+    topic_name=delta_topic,
+    qos='1',
     on_stream_event=self.on_shadow_delta,
     ...
 )
 ```
-
-> **Testing gap — shadow delta message format:** The AWS IoT Core shadow delta MQTT message wraps changed values under a `state` key: `{"version": N, "timestamp": N, "state": {"confidence_threshold": 0.7}, "metadata": {...}}`. The `on_shadow_delta` handler must therefore read `delta.get('state', {}).get('confidence_threshold')`, not `delta.get('confidence_threshold')` directly. The current implementation checks at the wrong level, meaning runtime threshold updates from the dashboard are silently ignored. This is the most likely cause of the "not yet fully tested" status and should be the first fix applied.
 
 3. **Reported state sync** — after applying a delta (or on startup), `update_shadow_reported()` writes the active threshold back to `reported` so the shadow stays consistent and the dashboard always reflects the live device value.
 
