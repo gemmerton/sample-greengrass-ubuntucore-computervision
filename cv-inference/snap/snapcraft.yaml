@@ -89,8 +89,6 @@ components:
       Faster R-CNN ResNet50 object detection model trained on COCO dataset.
       Includes OpenVINO IR format weights and bundled manifest.json with
       model metadata for auto-configuration.
-    hooks:
-      install: snap/hooks/component-install
 
   model-efficientnet:
     type: standard
@@ -98,8 +96,6 @@ components:
       EfficientNet B0 image classification model.
       Includes OpenVINO IR format weights and bundled manifest.json with
       model metadata for auto-configuration.
-    hooks:
-      install: snap/hooks/component-install
 
 hooks:
   install:
