@@ -107,12 +107,6 @@ hooks:
     plugs:
       - network
 
-layout:
-  /var/snap/cv-inference/common/models:
-    bind: $SNAP_COMMON/models
-  /var/snap/cv-inference/common/config:
-    bind: $SNAP_COMMON/config
-
 # OVMS startup configuration
 # --file_system_poll_wait_seconds 5 enables automatic config reload
 # --port 9000 exposes gRPC endpoint (TensorFlow Serving Predict API)
