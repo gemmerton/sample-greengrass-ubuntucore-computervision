@@ -61,11 +61,6 @@ apps:
       OVMS_GRPC_PORT: "9000"
       OVMS_FILE_SYSTEM_POLL_WAIT_SECONDS: "5"
 
-  modelctl:
-    command: usr/bin/modelctl
-    plugs:
-      - hardware-observe
-
 # Content interface slots for cross-snap filesystem sharing
 # Allows the Greengrass snap to write config and models via content interface
 slots:
