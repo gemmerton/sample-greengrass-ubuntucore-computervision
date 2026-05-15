@@ -1,37 +1,18 @@
-Traceback (most recent call last):
-  File "/snap/snapcraft/17634/bin/snapcraft", line 12, in <module>
-    sys.exit(main())
-             ^^^^^^
-  File "/snap/snapcraft/17634/lib/python3.12/site-packages/snapcraft/application.py", line 475, in main
-    return cli.run()
-           ^^^^^^^^^
-  File "/snap/snapcraft/17634/lib/python3.12/site-packages/snapcraft/cli.py", line 259, in run
-    _run_dispatcher(dispatcher, global_args)
-  File "/snap/snapcraft/17634/lib/python3.12/site-packages/snapcraft/cli.py", line 232, in _run_dispatcher
-    dispatcher.run()
-  File "/snap/snapcraft/17634/lib/python3.12/site-packages/craft_cli/dispatcher.py", line 564, in run
-    return self._loaded_command.run(self._parsed_command_args)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/snap/snapcraft/17634/lib/python3.12/site-packages/snapcraft/commands/core22/lifecycle.py", line 268, in run
-    super().run(parsed_args)
-  File "/snap/snapcraft/17634/lib/python3.12/site-packages/snapcraft/commands/core22/lifecycle.py", line 141, in run
-    parts_lifecycle.run(self.name, parsed_args)
-  File "/snap/snapcraft/17634/lib/python3.12/site-packages/snapcraft/parts/lifecycle.py", line 89, in run
-    partitions = _validate_and_get_partitions(yaml_data)
-                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/snap/snapcraft/17634/lib/python3.12/site-packages/snapcraft/parts/lifecycle.py", line 819, in _validate_and_get_partitions
-    project = models.ComponentProject.unmarshal(yaml_data)
-              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/snap/snapcraft/17634/lib/python3.12/site-packages/craft_application/models/base.py", line 64, in unmarshal
-    return cls.model_validate(data)
-           ^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/snap/snapcraft/17634/lib/python3.12/site-packages/pydantic/main.py", line 716, in model_validate
-    return cls.__pydantic_validator__.validate_python(
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-pydantic_core._pydantic_core.ValidationError: 2 validation errors for ComponentProject
-components.model-faster-rcnn.summary
-  Field required [type=missing, input_value={'type': 'standard', 'des... auto-configuration.\n'}, input_type=dict]
-    For further information visit https://errors.pydantic.dev/2.12/v/missing
-components.model-efficientnet.summary
-  Field required [type=missing, input_value={'type': 'standard', 'des... auto-configuration.\n'}, input_type=dict]
-    For further information visit https://errors.pydantic.dev/2.12/v/missing
+gary@GE-WS:~/Git/sample-greengrass-ubuntucore-computervision/cv-inference$ snapcraft
+Running snapcraft without a command will not be possible in future releases. Use 'snapcraft pack' instead.
+Generated snap metadata
+Generated component metadata
+Lint warnings:
+- metadata: Metadata field 'title' is missing or empty. (https://documentation.ubuntu.com/snapcraft/stable/reference/project-file/snapcraft-yaml/#title)
+- metadata: Metadata field 'contact' is missing or empty. (https://documentation.ubuntu.com/snapcraft/stable/reference/project-file/snapcraft-yaml/#contact)
+- metadata: Metadata field 'license' is missing or empty. (https://documentation.ubuntu.com/snapcraft/stable/reference/project-file/snapcraft-yaml/#license)
+Lint information:
+- metadata: Metadata field 'donation' is missing or empty. (https://documentation.ubuntu.com/snapcraft/stable/reference/project-file/snapcraft-yaml/#donation)
+- metadata: Metadata field 'issues' is missing or empty. (https://documentation.ubuntu.com/snapcraft/stable/reference/project-file/snapcraft-yaml/#issues)
+- metadata: Metadata field 'source-code' is missing or empty. (https://documentation.ubuntu.com/snapcraft/stable/reference/project-file/snapcraft-yaml/#source-code)
+- metadata: Metadata field 'website' is missing or empty. (https://documentation.ubuntu.com/snapcraft/stable/reference/project-file/snapcraft-yaml/#website)
+Cannot pack snap: error: cannot validate snap "cv-inference": layout "/var/snap/cv-inference/common/config" in an off-limits area
+Detailed information: Command '['snap', 'pack', '--check-skeleton', PosixPath('/root/prime')]' returned non-zero exit status 1.
+Failed to execute pack in instance.
+Recommended resolution: Run the same command again with --debug to shell into the environment if you wish to introspect this failure.
+Full execution log: '/home/gary/.local/state/snapcraft/log/snapcraft-20260515-172233.194495.log'
