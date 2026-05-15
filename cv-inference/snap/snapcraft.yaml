@@ -85,6 +85,7 @@ slots:
 components:
   model-faster-rcnn:
     type: standard
+    summary: Faster R-CNN object detection model for OpenVINO
     description: |
       Faster R-CNN ResNet50 object detection model trained on COCO dataset.
       Includes OpenVINO IR format weights and bundled manifest.json with
@@ -92,6 +93,7 @@ components:
 
   model-efficientnet:
     type: standard
+    summary: EfficientNet B0 classification model for OpenVINO
     description: |
       EfficientNet B0 image classification model.
       Includes OpenVINO IR format weights and bundled manifest.json with
