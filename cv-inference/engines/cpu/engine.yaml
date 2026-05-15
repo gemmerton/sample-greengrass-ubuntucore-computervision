@@ -1,0 +1,19 @@
+# CPU Engine Manifest
+# Generic Intel CPU inference engine for OpenVINO Model Server
+# Priority 1 (lowest) - used as fallback when no accelerator is detected
+name: cpu
+display_name: Intel CPU (Generic)
+description: OpenVINO Model Server optimised for Intel CPU inference. Serves as the fallback engine when no dedicated accelerator (GPU/NPU) is available.
+priority: 1
+device: CPU
+supported_extensions:
+  - xml
+  - bin
+  - onnx
+hardware_requirements:
+  devices: []
+  detection_method: /proc/cpuinfo contains GenuineIntel
+  notes: Always available on Intel platforms; used as generic fallback on non-Intel hardware
+environment:
+  OV_CPU_THREADS: "0"  # Auto-detect thread count
+  OV_CPU_BIND_THREAD: "YES"

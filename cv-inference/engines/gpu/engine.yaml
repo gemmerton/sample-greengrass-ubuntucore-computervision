@@ -1,0 +1,19 @@
+# GPU Engine Manifest
+# Intel GPU inference engine for OpenVINO Model Server
+# Priority 2 - preferred over CPU when Intel GPU hardware is available
+name: gpu
+display_name: Intel GPU (Integrated/Discrete)
+description: OpenVINO Model Server optimised for Intel GPU inference. Requires Intel integrated or discrete graphics with render node access.
+priority: 2
+device: GPU
+supported_extensions:
+  - xml
+  - bin
+  - onnx
+hardware_requirements:
+  devices:
+    - /dev/dri/renderD128
+  detection_method: Check /dev/dri/renderD128 exists or lspci shows Intel Graphics
+  notes: Requires Intel GPU with kernel driver loaded and render node accessible
+environment:
+  OV_GPU_CACHE_DIR: /tmp/ov_gpu_cache

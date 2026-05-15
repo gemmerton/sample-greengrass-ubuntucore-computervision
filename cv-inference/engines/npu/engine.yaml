@@ -1,0 +1,18 @@
+# NPU Engine Manifest
+# Intel NPU inference engine for OpenVINO Model Server
+# Priority 3 (highest) - preferred over GPU and CPU when Intel NPU is available
+name: npu
+display_name: Intel NPU (Neural Processing Unit)
+description: OpenVINO Model Server optimised for Intel NPU inference. Requires Intel Neural Processing Unit with accel device node available.
+priority: 3
+device: NPU
+supported_extensions:
+  - xml
+  - bin
+hardware_requirements:
+  devices:
+    - /dev/accel/accel0
+  detection_method: Check /dev/accel/accel0 exists or lspci shows neural processing hardware
+  notes: Requires Intel NPU with kernel driver loaded (Intel Meteor Lake or newer)
+environment:
+  NPU_COMPILER_TYPE: DRIVER

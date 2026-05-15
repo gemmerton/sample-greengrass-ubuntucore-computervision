@@ -1,0 +1,121 @@
+name: cv-inference
+version: '1.0.0'
+summary: OpenVINO Model Server inference snap with hardware-optimised engines
+description: |
+  Custom Ubuntu Inference Snap packaging OpenVINO Model Server (OVMS) with
+  hardware-optimised engine variants for Intel CPU, GPU, and NPU. Delivers
+  standard models as snap components and supports custom model storage for
+  S3-downloaded models. Exposes gRPC endpoint on port 9000 using the
+  TensorFlow Serving Predict API.
+
+  Engine selection priority: NPU > GPU > CPU (auto-detected on install).
+
+  Writable paths:
+    - $SNAP_COMMON/models/   : Custom model storage (persists across refreshes)
+    - $SNAP_COMMON/config/   : OVMS runtime configuration (persists across refreshes)
+    - $SNAP_COMPONENTS/      : Snap-delivered model components (managed by snapd)
+
+base: core22
+grade: stable
+confinement: strict
+
+architectures:
+  - build-on: amd64
+
+# Engine variants packaged within the snap
+# Active engine selected at install time via hardware auto-detection
+# Priority: NPU > GPU > CPU
+parts:
+  ovms:
+    plugin: dump
+    source: .
+    organize:
+      bin/ovms-start: usr/bin/ovms-start
+      engines/cpu/server: usr/bin/ovms-cpu
+      engines/gpu/server: usr/bin/ovms-gpu
+      engines/npu/server: usr/bin/ovms-npu
+      engines/cpu/engine.yaml: etc/engines/cpu/engine.yaml
+      engines/gpu/engine.yaml: etc/engines/gpu/engine.yaml
+      engines/npu/engine.yaml: etc/engines/npu/engine.yaml
+
+  model-tools:
+    plugin: nil
+    stage-packages:
+      - util-linux
+    override-build: |
+      # modelctl is provided by the snap for engine management
+      echo "Model tools staged"
+
+apps:
+  ovms:
+    command: usr/bin/ovms-start
+    daemon: simple
+    restart-condition: on-failure
+    restart-delay: 5s
+    plugs:
+      - network
+      - network-bind
+      - hardware-observe
+    environment:
+      OVMS_CONFIG_PATH: $SNAP_COMMON/config/models_config.json
+      OVMS_GRPC_PORT: "9000"
+      OVMS_FILE_SYSTEM_POLL_WAIT_SECONDS: "5"
+
+  modelctl:
+    command: usr/bin/modelctl
+    plugs:
+      - hardware-observe
+
+# Content interface slots for cross-snap filesystem sharing
+# Allows the Greengrass snap to write config and models via content interface
+slots:
+  inference-config:
+    interface: content
+    content: inference-config
+    write:
+      - $SNAP_COMMON/config
+  inference-models:
+    interface: content
+    content: inference-models
+    write:
+      - $SNAP_COMMON/models
+
+# Snap component model definitions
+# Each component delivers a self-describing model with manifest.json
+components:
+  model-faster-rcnn:
+    type: standard
+    description: |
+      Faster R-CNN ResNet50 object detection model trained on COCO dataset.
+      Includes OpenVINO IR format weights and bundled manifest.json with
+      model metadata for auto-configuration.
+    hooks:
+      install: snap/hooks/component-install
+
+  model-efficientnet:
+    type: standard
+    description: |
+      EfficientNet B0 image classification model.
+      Includes OpenVINO IR format weights and bundled manifest.json with
+      model metadata for auto-configuration.
+    hooks:
+      install: snap/hooks/component-install
+
+hooks:
+  install:
+    plugs:
+      - hardware-observe
+  configure:
+    plugs:
+      - network
+
+layout:
+  /var/snap/cv-inference/common/models:
+    bind: $SNAP_COMMON/models
+  /var/snap/cv-inference/common/config:
+    bind: $SNAP_COMMON/config
+
+# OVMS startup configuration
+# --file_system_poll_wait_seconds 5 enables automatic config reload
+# --port 9000 exposes gRPC endpoint (TensorFlow Serving Predict API)
+# --config_path points to $SNAP_COMMON/config/models_config.json
