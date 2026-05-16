@@ -1,5 +1,5 @@
-from dataclasses import dataclass, field
-import datetime, json, logging, time
+from dataclasses import dataclass, replace
+import datetime, json, logging, threading
 
 logger = logging.getLogger(__name__)
 
@@ -15,32 +15,39 @@ class HealthMonitor:
         self._client = ipc_client
         self._topic = topic
         self._metrics = StreamMetrics()
+        self._lock = threading.Lock()
 
     def record_frame_sent(self) -> None:
-        self._metrics.frames_sent += 1
+        with self._lock:
+            self._metrics.frames_sent += 1
 
     def record_frame_dropped(self) -> None:
-        self._metrics.frames_dropped += 1
+        with self._lock:
+            self._metrics.frames_dropped += 1
 
     def update_bitrate(self, bytes_sent: int, elapsed_seconds: float) -> None:
         if elapsed_seconds > 0:
-            self._metrics.bitrate_kbps = (bytes_sent * 8) / (elapsed_seconds * 1000)
+            with self._lock:
+                self._metrics.bitrate_kbps = (bytes_sent * 8) / (elapsed_seconds * 1000)
 
     def set_status(self, status: str) -> None:
-        self._metrics.connection_status = status
+        with self._lock:
+            self._metrics.connection_status = status
 
     def get_current_metrics(self) -> StreamMetrics:
-        return self._metrics
+        with self._lock:
+            return replace(self._metrics)
 
     def publish_metrics(self) -> None:
-        payload = {
-            "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
-            "frames_sent": self._metrics.frames_sent,
-            "frames_dropped": self._metrics.frames_dropped,
-            "bitrate_kbps": self._metrics.bitrate_kbps,
-            "connection_status": self._metrics.connection_status,
-            "error_reason": None,
-        }
+        with self._lock:
+            payload = {
+                "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+                "frames_sent": self._metrics.frames_sent,
+                "frames_dropped": self._metrics.frames_dropped,
+                "bitrate_kbps": self._metrics.bitrate_kbps,
+                "connection_status": self._metrics.connection_status,
+                "error_reason": None,
+            }
         try:
             self._client.publish_to_iot_core(
                 topic_name=self._topic,
