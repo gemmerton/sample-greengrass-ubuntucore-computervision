@@ -103,7 +103,7 @@ class TestShadowReading:
                             'detection_scores', 'num_detections'],
             'input_shape': [1, 255, 255, 3],
             'labels_file': 'labels.txt',
-            'local_path': '/snap/cv-inference/components/model-faster-rcnn/',
+            'local_path': '/snap/ovms-engine/components/model-faster-rcnn/',
         }
         mock_ipc_client.get_thing_shadow.return_value = _make_shadow_response({
             'faster-rcnn': {
@@ -197,7 +197,7 @@ class TestRetryLogic:
             'output_names': ['detection_boxes'],
             'input_shape': [1, 255, 255, 3],
             'labels_file': 'labels.txt',
-            'local_path': '/snap/cv-inference/components/model-faster-rcnn/',
+            'local_path': '/snap/ovms-engine/components/model-faster-rcnn/',
         }
 
         # First two calls: model not ready. Third call: model ready.
@@ -229,7 +229,7 @@ class TestRetryLogic:
             'output_names': ['detection_boxes'],
             'input_shape': [1, 255, 255, 3],
             'labels_file': 'labels.txt',
-            'local_path': '/snap/cv-inference/components/model-faster-rcnn/',
+            'local_path': '/snap/ovms-engine/components/model-faster-rcnn/',
         }
 
         # First call: exception. Second call: model ready.
@@ -326,7 +326,7 @@ class TestModelParameterExtraction:
                             'detection_scores', 'num_detections'],
             'input_shape': [1, 255, 255, 3],
             'labels_file': 'labels.txt',
-            'local_path': '/snap/cv-inference/components/model-faster-rcnn/',
+            'local_path': '/snap/ovms-engine/components/model-faster-rcnn/',
         }
 
         handler._extract_model_parameters(metadata)
@@ -371,7 +371,7 @@ class TestModelParameterExtraction:
                             'detection_scores', 'num_detections'],
             'input_shape': [1, 255, 255, 3],
             'labels_file': 'labels.txt',
-            'local_path': '/snap/cv-inference/components/model-faster-rcnn/',
+            'local_path': '/snap/ovms-engine/components/model-faster-rcnn/',
         }
 
         mock_ipc_client.get_thing_shadow.return_value = _make_shadow_response({

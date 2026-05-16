@@ -70,17 +70,17 @@ def mock_ipc_client():
 def temp_dirs(tmp_path):
     """Create temporary directories simulating the content interface mount point structure.
 
-    With the content interface, the Greengrass snap mounts cv-inference's directories
+    With the content interface, the Greengrass snap mounts ovms-engine's directories
     at separate, independent paths:
-    - SNAP_COMMON (models mount) -> cv-inference's $SNAP_COMMON/models/
-    - OVMS_CONFIG_DIR (config mount) -> cv-inference's $SNAP_COMMON/config/
+    - SNAP_COMMON (models mount) -> ovms-engine's $SNAP_COMMON/models/
+    - OVMS_CONFIG_DIR (config mount) -> ovms-engine's $SNAP_COMMON/config/
     - SNAP_COMPONENTS (read-only snap components path)
 
     These are independent mount points, so config_dir is NOT a subdirectory of snap_common.
     """
     snap_components = tmp_path / "snap-components"
-    snap_common = tmp_path / "cv-inference-models"
-    config_dir = tmp_path / "cv-inference-config"
+    snap_common = tmp_path / "ovms-engine-models"
+    config_dir = tmp_path / "ovms-engine-config"
     snap_components.mkdir()
     snap_common.mkdir()
     config_dir.mkdir()
@@ -105,6 +105,10 @@ def manager(mock_ipc_client, temp_dirs):
         from model_manager_core import ModelManagerCore
         mgr = ModelManagerCore()
         mgr.ipc_client = mock_ipc_client
+        # Mock the snapd client to avoid real socket connections
+        mgr.snapd = MagicMock()
+        mgr.snapd.install_component = MagicMock(return_value={})
+        mgr.snapd.remove_component = MagicMock(return_value={})
         yield mgr
 
 
@@ -144,19 +148,14 @@ class TestFullSnapInstallFlow:
         with open(os.path.join(model_dir, 'manifest.json'), 'w') as f:
             json.dump(FASTER_RCNN_MANIFEST, f)
 
-        # Mock subprocess.run to simulate successful snap install
-        with patch('subprocess.run') as mock_run:
-            mock_run.return_value = MagicMock(returncode=0, stdout='', stderr='')
+        event = _make_delta_event({
+            'models': {'faster-rcnn': {'source': 'snap'}}
+        })
+        manager._on_shadow_delta(event)
 
-            event = _make_delta_event({
-                'models': {'faster-rcnn': {'source': 'snap'}}
-            })
-            manager._on_shadow_delta(event)
-
-        # Verify snap install was called
-        mock_run.assert_called_once_with(
-            ['snap', 'install', 'cv-inference.model-faster-rcnn'],
-            capture_output=True, text=True, timeout=300,
+        # Verify snapd install_component was called
+        manager.snapd.install_component.assert_called_once_with(
+            'ovms-engine', 'model-faster-rcnn', timeout=300,
         )
 
         # Verify OVMS config was written with the model
@@ -174,15 +173,13 @@ class TestFullSnapInstallFlow:
 
     def test_snap_install_failure_does_not_write_config(self, manager, mock_ipc_client, temp_dirs):
         """Failed snap install does not produce OVMS config entry."""
-        with patch('subprocess.run') as mock_run:
-            mock_run.return_value = MagicMock(
-                returncode=1, stdout='', stderr='snap not found'
-            )
+        from snapd_client import SnapdError
+        manager.snapd.install_component.side_effect = SnapdError("snap not found")
 
-            event = _make_delta_event({
-                'models': {'bad-model': {'source': 'snap'}}
-            })
-            manager._on_shadow_delta(event)
+        event = _make_delta_event({
+            'models': {'bad-model': {'source': 'snap'}}
+        })
+        manager._on_shadow_delta(event)
 
         # OVMS config should not exist (no ready models)
         config = _read_ovms_config(temp_dirs['config_dir'])
@@ -624,10 +621,10 @@ class TestModelRemovalIntegration:
 class TestContentInterfacePathSeparation:
     """Verify that OVMS_CONFIG_DIR and SNAP_COMMON are independent mount points.
 
-    With the content interface, the Greengrass snap mounts cv-inference's directories
+    With the content interface, the Greengrass snap mounts ovms-engine's directories
     at separate paths:
-    - OVMS_CONFIG_DIR = /var/snap/aws-iot-greengrass/current/cv-inference-config
-    - SNAP_COMMON = /var/snap/aws-iot-greengrass/current/cv-inference-models
+    - OVMS_CONFIG_DIR = /var/snap/aws-iot-greengrass/current/ovms-engine-config
+    - SNAP_COMMON = /var/snap/aws-iot-greengrass/current/ovms-engine-models
 
     These are NOT nested — config is not a subdirectory of SNAP_COMMON.
     This test class verifies that ModelManagerCore correctly writes to each
@@ -639,9 +636,9 @@ class TestContentInterfacePathSeparation:
     ):
         """OVMS config and S3 model files are written to independent directories."""
         # Simulate content interface mount points as completely separate paths
-        models_mount = tmp_path / "var" / "snap" / "aws-iot-greengrass" / "current" / "cv-inference-models"
-        config_mount = tmp_path / "var" / "snap" / "aws-iot-greengrass" / "current" / "cv-inference-config"
-        snap_components = tmp_path / "snap" / "cv-inference" / "current" / "components"
+        models_mount = tmp_path / "var" / "snap" / "aws-iot-greengrass" / "current" / "ovms-engine-models"
+        config_mount = tmp_path / "var" / "snap" / "aws-iot-greengrass" / "current" / "ovms-engine-config"
+        snap_components = tmp_path / "snap" / "ovms-engine" / "current" / "components"
         models_mount.mkdir(parents=True)
         config_mount.mkdir(parents=True)
         snap_components.mkdir(parents=True)
@@ -735,8 +732,8 @@ class TestContentInterfacePathSeparation:
     ):
         """Snap model install writes OVMS config to config mount, not models mount."""
         # Simulate content interface mount points
-        models_mount = tmp_path / "cv-inference-models"
-        config_mount = tmp_path / "cv-inference-config"
+        models_mount = tmp_path / "ovms-engine-models"
+        config_mount = tmp_path / "ovms-engine-config"
         snap_components = tmp_path / "snap-components"
         models_mount.mkdir()
         config_mount.mkdir()
@@ -760,13 +757,13 @@ class TestContentInterfacePathSeparation:
             mgr = ModelManagerCore()
             mgr.ipc_client = mock_ipc_client
 
-        with patch('subprocess.run') as mock_run:
-            mock_run.return_value = MagicMock(returncode=0, stdout='', stderr='')
+        mgr.snapd = MagicMock()
+        mgr.snapd.install_component = MagicMock(return_value={})
 
-            event = _make_delta_event({
-                'models': {'faster-rcnn': {'source': 'snap'}}
-            })
-            mgr._on_shadow_delta(event)
+        event = _make_delta_event({
+            'models': {'faster-rcnn': {'source': 'snap'}}
+        })
+        mgr._on_shadow_delta(event)
 
         # OVMS config must be in the config mount
         config_file = config_mount / "models_config.json"

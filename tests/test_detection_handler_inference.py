@@ -79,7 +79,7 @@ def handler(mock_ipc_client):
                             'detection_scores', 'num_detections'],
             'input_shape': [1, 255, 255, 3],
             'labels_file': 'labels.txt',
-            'local_path': '/snap/cv-inference/components/model-faster-rcnn/',
+            'local_path': '/snap/ovms-engine/components/model-faster-rcnn/',
         }
         h.model_name = 'faster_rcnn'
         h.input_name = 'input_tensor'

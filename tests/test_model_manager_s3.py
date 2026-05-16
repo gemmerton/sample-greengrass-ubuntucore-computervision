@@ -41,7 +41,7 @@ def manager(mock_ipc_client, tmp_path):
 
     with patch.dict(os.environ, {
         'AWS_IOT_THING_NAME': 'test-thing',
-        'SNAP_COMPONENTS': '/snap/cv-inference/current/components',
+        'SNAP_COMPONENTS': '/snap/ovms-engine/current/components',
         'SNAP_COMMON': str(tmp_path),
         'OVMS_CONFIG_DIR': str(tmp_path / 'config'),
     }):

@@ -42,9 +42,9 @@ def manager(mock_ipc_client):
 
     with patch.dict(os.environ, {
         'AWS_IOT_THING_NAME': 'test-thing',
-        'SNAP_COMPONENTS': '/snap/cv-inference/current/components',
-        'SNAP_COMMON': '/var/snap/cv-inference/common',
-        'OVMS_CONFIG_DIR': '/var/snap/cv-inference/common/config',
+        'SNAP_COMPONENTS': '/snap/ovms-engine/current/components',
+        'SNAP_COMMON': '/var/snap/ovms-engine/common',
+        'OVMS_CONFIG_DIR': '/var/snap/ovms-engine/common/config',
     }):
         from model_manager_core import ModelManagerCore
         mgr = ModelManagerCore()
@@ -58,8 +58,8 @@ class TestInitialization:
     def test_initializes_with_environment_variables(self, manager):
         """Manager reads configuration from environment variables."""
         assert manager.thing_name == 'test-thing'
-        assert manager.snap_components_path == '/snap/cv-inference/current/components'
-        assert manager.snap_common_path == '/var/snap/cv-inference/common'
+        assert manager.snap_components_path == '/snap/ovms-engine/current/components'
+        assert manager.snap_common_path == '/var/snap/ovms-engine/common'
 
     def test_initializes_with_empty_reported_models(self, manager):
         """Manager starts with empty reported models when no shadow exists."""
@@ -88,9 +88,9 @@ class TestInitialization:
 
         with patch.dict(os.environ, {
             'AWS_IOT_THING_NAME': 'test-thing',
-            'SNAP_COMPONENTS': '/snap/cv-inference/current/components',
-            'SNAP_COMMON': '/var/snap/cv-inference/common',
-            'OVMS_CONFIG_DIR': '/var/snap/cv-inference/common/config',
+            'SNAP_COMPONENTS': '/snap/ovms-engine/current/components',
+            'SNAP_COMMON': '/var/snap/ovms-engine/common',
+            'OVMS_CONFIG_DIR': '/var/snap/ovms-engine/common/config',
         }):
             from model_manager_core import ModelManagerCore
             mgr = ModelManagerCore()
@@ -120,9 +120,9 @@ class TestShadowSubscription:
 
         with patch.dict(os.environ, {
             'AWS_IOT_THING_NAME': '',
-            'SNAP_COMPONENTS': '/snap/cv-inference/current/components',
-            'SNAP_COMMON': '/var/snap/cv-inference/common',
-            'OVMS_CONFIG_DIR': '/var/snap/cv-inference/common/config',
+            'SNAP_COMPONENTS': '/snap/ovms-engine/current/components',
+            'SNAP_COMMON': '/var/snap/ovms-engine/common',
+            'OVMS_CONFIG_DIR': '/var/snap/ovms-engine/common/config',
         }):
             from model_manager_core import ModelManagerCore
             mgr = ModelManagerCore()

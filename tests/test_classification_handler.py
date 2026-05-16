@@ -61,7 +61,7 @@ def handler(mock_ipc_client):
             'output_names': ['predictions'],
             'input_shape': [1, 224, 224, 3],
             'labels_file': 'labels.txt',
-            'local_path': '/snap/cv-inference/components/model-efficientnet/',
+            'local_path': '/snap/ovms-engine/components/model-efficientnet/',
         }
         h.labels = ['tench', 'goldfish', 'great white shark', 'tiger shark',
                     'hammerhead', 'electric ray', 'stingray', 'cock', 'hen', 'ostrich']
@@ -406,7 +406,7 @@ class TestModelMetadataFromShadow:
                                 "output_names": ["predictions"],
                                 "input_shape": [1, 224, 224, 3],
                                 "labels_file": "labels.txt",
-                                "local_path": "/snap/cv-inference/components/model-efficientnet/",
+                                "local_path": "/snap/ovms-engine/components/model-efficientnet/",
                             }
                         }
                     }
@@ -594,7 +594,7 @@ class TestIndependentFromDetectionHandler:
                                                  "detection_scores", "num_detections"],
                                 "input_shape": [1, 255, 255, 3],
                                 "labels_file": "labels.txt",
-                                "local_path": "/snap/cv-inference/components/model-faster-rcnn/",
+                                "local_path": "/snap/ovms-engine/components/model-faster-rcnn/",
                             }
                         },
                         "efficientnet": {
@@ -605,7 +605,7 @@ class TestIndependentFromDetectionHandler:
                                 "output_names": ["predictions"],
                                 "input_shape": [1, 224, 224, 3],
                                 "labels_file": "labels.txt",
-                                "local_path": "/snap/cv-inference/components/model-efficientnet/",
+                                "local_path": "/snap/ovms-engine/components/model-efficientnet/",
                             }
                         }
                     }
