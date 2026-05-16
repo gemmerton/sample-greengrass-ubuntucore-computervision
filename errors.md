@@ -1,18 +1,22 @@
-gary@GE-WS:~/Git/sample-greengrass-ubuntucore-computervision/cv-inference$ snapcraft
-Running snapcraft without a command will not be possible in future releases. Use 'snapcraft pack' instead.
-Generated snap metadata
-Generated component metadata
-Lint warnings:
-- metadata: Metadata field 'title' is missing or empty. (https://documentation.ubuntu.com/snapcraft/stable/reference/project-file/snapcraft-yaml/#title)
-- metadata: Metadata field 'contact' is missing or empty. (https://documentation.ubuntu.com/snapcraft/stable/reference/project-file/snapcraft-yaml/#contact)
-- metadata: Metadata field 'license' is missing or empty. (https://documentation.ubuntu.com/snapcraft/stable/reference/project-file/snapcraft-yaml/#license)
-Lint information:
-- metadata: Metadata field 'donation' is missing or empty. (https://documentation.ubuntu.com/snapcraft/stable/reference/project-file/snapcraft-yaml/#donation)
-- metadata: Metadata field 'issues' is missing or empty. (https://documentation.ubuntu.com/snapcraft/stable/reference/project-file/snapcraft-yaml/#issues)
-- metadata: Metadata field 'source-code' is missing or empty. (https://documentation.ubuntu.com/snapcraft/stable/reference/project-file/snapcraft-yaml/#source-code)
-- metadata: Metadata field 'website' is missing or empty. (https://documentation.ubuntu.com/snapcraft/stable/reference/project-file/snapcraft-yaml/#website)
+# Build Errors and Resolutions
+
+## Resolved: Snap layout validation failure (cv-inference, 2026-05-15)
+
+The original `cv-inference` snap attempted to use a `layout` declaration for
+`/var/snap/cv-inference/common/config`. This path is under `/var/snap/` which
+snapd manages directly - layouts cannot reference paths in this area.
+
+**Error:**
+```
 Cannot pack snap: error: cannot validate snap "cv-inference": layout "/var/snap/cv-inference/common/config" in an off-limits area
-Detailed information: Command '['snap', 'pack', '--check-skeleton', PosixPath('/root/prime')]' returned non-zero exit status 1.
-Failed to execute pack in instance.
-Recommended resolution: Run the same command again with --debug to shell into the environment if you wish to introspect this failure.
-Full execution log: '/home/gary/.local/state/snapcraft/log/snapcraft-20260515-172233.194495.log'
+```
+
+**Resolution:** Removed the layout declaration entirely. `$SNAP_COMMON` is
+inherently writable to the snap without needing a layout. The replacement
+`ovms-engine` snap uses `$SNAP_COMMON/config` and `$SNAP_COMMON/models`
+directly, exposed to the Greengrass snap via content interface slots.
+
+**Lesson:** Never use snap layouts for paths under `/var/snap/`. Use
+`$SNAP_COMMON` (writable, persists across refreshes) or `$SNAP_DATA`
+(writable, per-revision) directly. For cross-snap access, use content
+interface slots with `write:` directives.

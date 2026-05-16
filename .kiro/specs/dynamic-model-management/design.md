@@ -12,8 +12,8 @@ The system operates across two strictly-confined snaps on Ubuntu Core. Cross-sna
 
 | Snap | Role | Key Interfaces |
 |------|------|----------------|
-| **aws-iot-greengrass** | Orchestration — runs Greengrass components (ModelManagerCore, handlers) | `snapd-control` (manage snap installs), content plug (write to cv-inference config) |
-| **cv-inference** | Inference runtime — runs OVMS, delivers model components | content slot (expose writable config dir), `network-bind` (gRPC port 9000) |
+| **aws-iot-greengrass** | Orchestration — runs Greengrass components (ModelManagerCore, handlers) | `snapd-control` (manage snap installs), content plug (write to ovms-engine config) |
+| **ovms-engine** | Inference runtime — runs OVMS, delivers model components | content slot (expose writable config dir), `network-bind` (gRPC port 9000) |
 
 ### Cross-Snap Communication
 
@@ -23,7 +23,7 @@ graph LR
         MM[ModelManagerCore]
     end
 
-    subgraph CV["cv-inference snap"]
+    subgraph CV["ovms-engine snap"]
         CONFIG["$SNAP_COMMON/config/"]
         MODELS["$SNAP_COMMON/models/"]
         OVMS[OVMS Process]
@@ -36,23 +36,23 @@ graph LR
 ```
 
 **Content Interface** (Canonical-recommended for cross-snap filesystem sharing):
-- The cv-inference snap exposes a writable content slot for `$SNAP_COMMON/config/` and `$SNAP_COMMON/models/`
+- The ovms-engine snap exposes a writable content slot for `$SNAP_COMMON/config/` and `$SNAP_COMMON/models/`
 - The Greengrass snap connects a content plug, gaining write access to these directories
 - This is model-type agnostic — any configuration format (JSON, protobuf text) can be written
 - Auto-connects between snaps from the same publisher
 
 **snapd-control Interface**:
-- The Greengrass snap uses `snapd-control` to install/remove snap components (e.g., `snap install cv-inference.model-faster-rcnn`)
+- The Greengrass snap uses `snapd-control` to install/remove snap components (e.g., `snap install ovms-engine.model-faster-rcnn`)
 - This is a super-privileged interface, appropriate for brand store deployments on Ubuntu Core
 
 **Network (localhost)**:
 - Inference handlers call OVMS via gRPC on `localhost:9000`
 - Both snaps have `network` plug for localhost communication
 
-### cv-inference Snap Interface Definitions
+### ovms-engine Snap Interface Definitions
 
 ```yaml
-# In cv-inference snapcraft.yaml
+# In ovms-engine snapcraft.yaml
 slots:
   inference-config:
     interface: content
@@ -74,11 +74,11 @@ plugs:
   inference-config:
     interface: content
     content: inference-config
-    target: $SNAP_DATA/cv-inference-config
+    target: $SNAP_DATA/ovms-engine-config
   inference-models:
     interface: content
     content: inference-models
-    target: $SNAP_DATA/cv-inference-models
+    target: $SNAP_DATA/ovms-engine-models
   snapd-control:
     interface: snapd-control
 ```
@@ -87,14 +87,14 @@ plugs:
 
 ModelManagerCore resolves paths through the content interface mount points:
 
-| Logical Path | Actual Path (from Greengrass snap) | Maps To (in cv-inference snap) |
+| Logical Path | Actual Path (from Greengrass snap) | Maps To (in ovms-engine snap) |
 |---|---|---|
-| OVMS config | `$SNAP_DATA/cv-inference-config/models_config.json` | `$SNAP_COMMON/config/models_config.json` |
-| S3 model storage | `$SNAP_DATA/cv-inference-models/{model_id}/` | `$SNAP_COMMON/models/{model_id}/` |
+| OVMS config | `$SNAP_DATA/ovms-engine-config/models_config.json` | `$SNAP_COMMON/config/models_config.json` |
+| S3 model storage | `$SNAP_DATA/ovms-engine-models/{model_id}/` | `$SNAP_COMMON/models/{model_id}/` |
 
 ### Snap Component Paths
 
-Snap-delivered models are installed as components of the cv-inference snap. Their paths are accessible to OVMS (running inside cv-inference) at:
+Snap-delivered models are installed as components of the ovms-engine snap. Their paths are accessible to OVMS (running inside ovms-engine) at:
 - `$SNAP/components/model-faster-rcnn/` (read-only, managed by snapd)
 
 ModelManagerCore does not need write access to component paths — it only reads `manifest.json` from them after installation. The content interface provides read access to the component directory for manifest reading.
@@ -118,7 +118,7 @@ graph TD
             SM[ShadowManager]
         end
 
-        subgraph Snap["cv-inference Snap"]
+        subgraph Snap["ovms-engine Snap"]
             OVMS[OVMS - Multi-Model]
             ENGINE[Engine Manager]
             CONTENT_SLOT["Content Slot: config/ + models/"]
@@ -174,7 +174,7 @@ graph TD
             "output_names": ["detection_boxes", "detection_classes", "detection_scores", "num_detections"],
             "input_shape": [1, 255, 255, 3],
             "labels_file": "labels.txt",
-            "local_path": "/snap/cv-inference/components/model-faster-rcnn/"
+            "local_path": "/snap/ovms-engine/components/model-faster-rcnn/"
           }
         },
         "efficientnet": {
@@ -185,7 +185,7 @@ graph TD
             "output_names": ["predictions"],
             "input_shape": [1, 224, 224, 3],
             "labels_file": "labels.txt",
-            "local_path": "/snap/cv-inference/components/model-efficientnet/"
+            "local_path": "/snap/ovms-engine/components/model-efficientnet/"
           }
         }
       }
@@ -200,7 +200,7 @@ graph TD
 
 Single Greengrass component responsible for:
 1. Subscribing to `model-config` shadow delta
-2. Installing snap models via `snap install cv-inference.model-{id}`
+2. Installing snap models via `snap install ovms-engine.model-{id}`
 3. Downloading S3 models via `boto3.download_file()` to `$SNAP_COMMON/models/{model_id}/`
 4. Reading `manifest.json` from each installed model
 5. Writing `$SNAP_COMMON/config/models_config.json` with all ready models
@@ -226,7 +226,7 @@ New component for image classification models. Same pattern as DetectionHandler 
 - Calls OVMS gRPC, gets class probability vector
 - Publishes top-N classifications to `camera/classifications`
 
-### 4. cv-inference Snap (existing, updated for content interface)
+### 4. ovms-engine Snap (existing, updated for content interface)
 
 Already provides:
 - OVMS runtime with hardware engine auto-detection
@@ -261,13 +261,13 @@ Written by ModelManagerCore to `$SNAP_COMMON/config/models_config.json`:
     {
       "config": {
         "name": "faster_rcnn",
-        "base_path": "/snap/cv-inference/components/model-faster-rcnn"
+        "base_path": "/snap/ovms-engine/components/model-faster-rcnn"
       }
     },
     {
       "config": {
         "name": "efficientnet",
-        "base_path": "/snap/cv-inference/components/model-efficientnet"
+        "base_path": "/snap/ovms-engine/components/model-efficientnet"
       }
     }
   ]
@@ -298,12 +298,12 @@ sequenceDiagram
     participant IoT as IoT Core
     participant MM as ModelManagerCore
     participant Snap as Snap Store
-    participant OVMS as cv-inference (OVMS)
+    participant OVMS as ovms-engine (OVMS)
 
     Op->>IoT: Update shadow desired: models: {faster-rcnn: {source: snap}}
     IoT->>MM: Shadow delta
     MM->>MM: Report model status: "installing"
-    MM->>Snap: snap install cv-inference.model-faster-rcnn
+    MM->>Snap: snap install ovms-engine.model-faster-rcnn
     Snap-->>MM: Installation complete
     MM->>MM: Read manifest.json from component path
     MM->>OVMS: Write models_config.json

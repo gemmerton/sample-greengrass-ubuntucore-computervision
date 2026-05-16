@@ -7,7 +7,7 @@ Dynamic Model Management enables operators to request multiple OpenVINO inferenc
 ## Glossary
 
 - **Model_Config_Shadow**: The IoT Device Shadow named `model-config` that declares which models should be on the device and reports their status
-- **Inference_Snap**: The `cv-inference` Ubuntu Core snap that packages OVMS with hardware-optimised engines and delivers standard models as snap components
+- **Inference_Snap**: The `ovms-engine` Ubuntu Core snap that packages OVMS with hardware-optimised engines and delivers standard models as snap components
 - **Model_Manager**: The Greengrass component (`com.example.ModelManagerCore`) that watches the shadow and orchestrates model installation and OVMS configuration
 - **OVMS**: OpenVINO Model Server — serves multiple models simultaneously via gRPC
 - **Snap_Model**: A model delivered as a snap component via the Snap Store (primary delivery)
@@ -34,7 +34,7 @@ Dynamic Model Management enables operators to request multiple OpenVINO inferenc
 
 #### Acceptance Criteria
 
-1. WHEN a model with `source: "snap"` is requested, THE Model_Manager SHALL invoke `snap install` for the corresponding snap component (e.g. `cv-inference.model-faster-rcnn`)
+1. WHEN a model with `source: "snap"` is requested, THE Model_Manager SHALL invoke `snap install` for the corresponding snap component (e.g. `ovms-engine.model-faster-rcnn`)
 2. THE Inference Snap SHALL handle hardware variant selection automatically — the Model_Manager does not determine which variant to download
 3. EACH snap model component SHALL include a `manifest.json` describing its OVMS interface: `model_id`, `model_name`, `version`, `input_name`, `output_names`, `input_shape`, `labels_file`
 4. WHEN snap installation completes, THE Model_Manager SHALL read the manifest.json and update the reported state with status `ready` and the model's metadata

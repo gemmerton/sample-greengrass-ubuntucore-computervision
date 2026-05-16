@@ -119,7 +119,7 @@ class SnapdClient:
         """Install a component of an already-installed snap.
 
         Args:
-            snap_name: The host snap name (e.g., 'cv-inference')
+            snap_name: The host snap name (e.g., 'ovms-engine')
             component_name: The component to install (e.g., 'model-faster-rcnn')
             timeout: Maximum seconds to wait for installation
 
@@ -149,7 +149,7 @@ class SnapdClient:
         """Remove a component of an installed snap.
 
         Args:
-            snap_name: The host snap name (e.g., 'cv-inference')
+            snap_name: The host snap name (e.g., 'ovms-engine')
             component_name: The component to remove (e.g., 'model-faster-rcnn')
             timeout: Maximum seconds to wait for removal
 

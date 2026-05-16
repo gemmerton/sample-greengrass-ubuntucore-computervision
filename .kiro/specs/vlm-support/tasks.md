@@ -39,7 +39,7 @@ This plan extends the existing dynamic model management system to support Vision
 
   - [ ] 2.2 Implement VLM snap installation
     - Add `_install_snap_vlm(model_id, model_config)` method to ModelManagerCore
-    - Run `snap install cv-inference.vlm-{model_id}` (note `vlm-` prefix instead of `model-`)
+    - Run `snap install ovms-engine.vlm-{model_id}` (note `vlm-` prefix instead of `model-`)
     - Read `vlm_manifest.json` from `$SNAP_COMPONENTS/vlm-{model_id}/`
     - Validate manifest using `vlm_manifest.validate_vlm_manifest()`
     - Check device compatibility with active engine
@@ -118,23 +118,23 @@ This plan extends the existing dynamic model management system to support Vision
 
 - [ ] 7. Update Inference Snap engine scripts
   - [ ] 7.1 Update CPU engine server script
-    - Modify `cv-inference/engines/cpu/server` to add `--rest_port 8000` parameter
+    - Modify `ovms-engine/engines/cpu/server` to add `--rest_port 8000` parameter
     - Add conditional `--graph_path $SNAP_COMMON/config/vlm_graphs/` parameter when `$SNAP_COMMON/config/graph_config.json` exists
     - _Requirements: 8.1, 8.2, 8.6_
 
   - [ ] 7.2 Update GPU engine server script
-    - Modify `cv-inference/engines/gpu/server` to add `--rest_port 8000` parameter
+    - Modify `ovms-engine/engines/gpu/server` to add `--rest_port 8000` parameter
     - Add conditional `--graph_path $SNAP_COMMON/config/vlm_graphs/` parameter when `$SNAP_COMMON/config/graph_config.json` exists
     - _Requirements: 8.1, 8.2, 8.6_
 
   - [ ] 7.3 Update NPU engine server script
-    - Modify `cv-inference/engines/npu/server` to add `--rest_port 8000` parameter
+    - Modify `ovms-engine/engines/npu/server` to add `--rest_port 8000` parameter
     - Add conditional `--graph_path $SNAP_COMMON/config/vlm_graphs/` parameter when `$SNAP_COMMON/config/graph_config.json` exists
     - Add `--max_concurrent_requests 1` parameter for Stateful VLM pipeline
     - _Requirements: 8.1, 8.2, 8.4, 8.6_
 
   - [ ] 7.4 Update snapcraft.yaml for VLM support
-    - Add `OVMS_REST_PORT: "8000"` to the ovms app environment in `cv-inference/snap/snapcraft.yaml`
+    - Add `OVMS_REST_PORT: "8000"` to the ovms app environment in `ovms-engine/snap/snapcraft.yaml`
     - Add VLM snap component definitions using `vlm-` prefix naming convention (e.g., `vlm-llava`)
     - _Requirements: 5.1, 8.3_
 

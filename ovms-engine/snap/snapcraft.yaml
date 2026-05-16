@@ -48,18 +48,53 @@ parts:
       bin/cli: bin/modelctl
 
   # OpenVINO Model Server binary
-  # Built from source with CPU, GPU, and NPU plugin support
+  # OVMS releases provide pre-built binaries via GitHub releases and Docker images.
+  # For snap packaging, extract the ovms binary from the official release tarball.
+  # The binary is self-contained with OpenVINO runtime libraries.
+  # Each hardware variant (CPU/GPU/NPU) gets its own component with the
+  # appropriate plugins and libraries.
+  #
+  # Build approach: Download the pre-built OVMS release binary and stage it
+  # into the runtime components. Building from source requires bazel and takes
+  # 30+ minutes - not practical for iterative snap development.
+  #
+  # For production: fetch from https://github.com/openvinotoolkit/model_server/releases
+  # For development: extract from the Docker image:
+  #   docker create --name ovms-extract openvino/model_server:2024.5 && \
+  #   docker cp ovms-extract:/ovms/bin/ovms ./ovms-binary && \
+  #   docker rm ovms-extract
   ovms:
-    source: https://github.com/openvinotoolkit/model_server.git
-    source-tag: v2024.5
-    source-depth: 1
     plugin: nil
     override-build: |
-      # OVMS provides pre-built binaries via release artifacts
-      # For snap packaging, use the pre-built binary appropriate for the target
-      echo "OVMS build placeholder - replace with actual build or binary fetch"
+      # Fetch OVMS pre-built binary from the official Docker image
+      # This avoids the 30+ minute bazel build from source
+      OVMS_VERSION="2024.5"
+      OVMS_IMAGE="openvino/model_server:${OVMS_VERSION}"
+
+      # Pull and extract the ovms binary and libraries
+      # In CI/CD, use: docker create + docker cp
+      # For local dev, place pre-extracted binaries in a local directory
+      if [ -f "${CRAFT_PART_SRC}/ovms" ]; then
+        echo "Using pre-extracted OVMS binary from source directory"
+        install -D "${CRAFT_PART_SRC}/ovms" "${CRAFT_PART_INSTALL}/usr/bin/ovms"
+      else
+        echo "WARNING: OVMS binary not found at ${CRAFT_PART_SRC}/ovms"
+        echo "Extract it from the Docker image before building:"
+        echo "  docker create --name ovms-tmp openvino/model_server:${OVMS_VERSION}"
+        echo "  docker cp ovms-tmp:/ovms/bin/ovms ovms-engine/ovms"
+        echo "  docker cp ovms-tmp:/ovms/lib/ ovms-engine/lib/"
+        echo "  docker rm ovms-tmp"
+        exit 1
+      fi
+
+      # Stage shared libraries if present
+      if [ -d "${CRAFT_PART_SRC}/lib" ]; then
+        cp -r "${CRAFT_PART_SRC}/lib/"* "${CRAFT_PART_INSTALL}/usr/lib/" 2>/dev/null || true
+      fi
     stage-packages:
       - libgomp1
+      - libxml2
+      - libpugixml1v5
 
   # Engine definitions
   engines:

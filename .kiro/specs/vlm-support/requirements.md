@@ -10,7 +10,7 @@ VLM Support extends the existing Dynamic Model Management system to handle Visio
 - **Model_Config_Shadow**: The IoT Device Shadow named `model-config` that declares which models should be on the device and reports their status
 - **Model_Manager**: The Greengrass component (`com.example.ModelManagerCore`) that watches the shadow and orchestrates model installation and OVMS configuration
 - **VLM_Handler**: The Greengrass component (`com.example.VLMHandler`) that sends image+prompt requests to OVMS via the HTTP chat completions API
-- **Inference_Snap**: The `cv-inference` Ubuntu Core snap that packages OVMS with hardware-optimised engines and delivers models as snap components
+- **Inference_Snap**: The `ovms-engine` Ubuntu Core snap that packages OVMS with hardware-optimised engines and delivers models as snap components
 - **OVMS**: OpenVINO Model Server — serves CV models via gRPC and VLMs via HTTP chat completions
 - **Graph_Config**: A `graph.pbtxt` MediaPipe graph definition file that configures OVMS to serve a VLM using the LLM calculator with continuous batching
 - **VLM_Manifest**: A `vlm_manifest.json` file included with each VLM that describes its serving parameters (cache size, max tokens, device target, chat template)
@@ -38,7 +38,7 @@ VLM Support extends the existing Dynamic Model Management system to handle Visio
 
 #### Acceptance Criteria
 
-1. WHEN a model with `model_type: "vlm"` and `source: "snap"` is requested, THE Model_Manager SHALL invoke `snap install` for the corresponding snap component using the naming convention `cv-inference.vlm-{model_id}` (e.g. `cv-inference.vlm-llava`)
+1. WHEN a model with `model_type: "vlm"` and `source: "snap"` is requested, THE Model_Manager SHALL invoke `snap install` for the corresponding snap component using the naming convention `ovms-engine.vlm-{model_id}` (e.g. `ovms-engine.vlm-llava`)
 2. EACH VLM snap component SHALL include a VLM_Manifest file (`vlm_manifest.json`) describing its serving parameters: `model_id` (string), `model_name` (string), `model_type` (string, value "vlm"), `version` (string, semver), `models_path` (string, relative path to model artifacts), `cache_size` (integer, number of KV cache blocks), `max_num_batched_tokens` (integer, maximum tokens per batch), `device_targets` (array of strings from: "CPU", "GPU", "NPU"), `chat_template_file` (string, filename), and `tokenizer_config_file` (string, filename)
 3. EACH VLM snap component SHALL include the required model artifacts: `openvino_model.bin`, `openvino_model.xml`, `openvino_tokenizer.bin`, `openvino_tokenizer.xml`, `openvino_detokenizer.bin`, `openvino_detokenizer.xml`, `tokenizer_config.json`, and `chat_template.jinja`
 4. WHEN snap installation completes successfully, THE Model_Manager SHALL read the `vlm_manifest.json` and update the reported state with status `ready` and the VLM model metadata including: `model_name`, `model_type`, `version`, `models_path`, `cache_size`, `max_num_batched_tokens`, `device_targets`, `chat_template_file`, `tokenizer_config_file`, and `local_path`

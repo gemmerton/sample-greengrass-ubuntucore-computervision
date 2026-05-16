@@ -1,7 +1,7 @@
 """OVMS configuration manager utility for Dynamic Model Management.
 
 Provides functions to read and write the OVMS multi-model configuration file
-(`models_config.json`) used by OpenVINO Model Server within the cv-inference snap.
+(`models_config.json`) used by OpenVINO Model Server within the ovms-engine snap.
 
 Supports both single-model configuration (for active model switching) and
 multi-model configuration (for serving all ready models simultaneously).

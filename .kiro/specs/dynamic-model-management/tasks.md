@@ -14,7 +14,7 @@ This plan implements multi-model management for the edge device in a minimal, de
     - _Requirements: 1.1, 1.2, 1.3_
 
   - [x] 1.2 Implement snap model installation
-    - When a model with `source: "snap"` is requested, run `snap install cv-inference.model-{model_id}`
+    - When a model with `source: "snap"` is requested, run `snap install ovms-engine.model-{model_id}`
     - Read `manifest.json` from the installed component path (`$SNAP_COMPONENTS/model-{model_id}/`)
     - Update reported state with status `installing` then `ready` (or `failed` with reason)
     - _Requirements: 2.1, 2.2, 2.3, 2.4_
@@ -88,9 +88,9 @@ This plan implements multi-model management for the edge device in a minimal, de
     - Test classification output parsing (top-N)
     - Test independent operation from DetectionHandler
 
-- [x] 4. Update cv-inference snap for multi-model support
+- [x] 4. Update ovms-engine snap for multi-model support
   - [x] 4.1 Verify snap structure supports multiple model components
-    - Confirm `cv-inference/components/model-faster-rcnn/` and `cv-inference/components/model-efficientnet/` both have valid manifest.json
+    - Confirm `ovms-engine/components/model-faster-rcnn/` and `ovms-engine/components/model-efficientnet/` both have valid manifest.json
     - Confirm OVMS `--file_system_poll_wait_seconds 5` is configured in snap service
     - Confirm models_config.json path is `$SNAP_COMMON/config/models_config.json`
     - _Requirements: 5.1, 5.2, 5.3, 5.4_
@@ -143,15 +143,15 @@ This plan implements multi-model management for the edge device in a minimal, de
 ```
 
 - [x] 7. Ubuntu Core snap confinement: content interface setup
-  - [x] 7.1 Add content interface slots to cv-inference snapcraft.yaml
+  - [x] 7.1 Add content interface slots to ovms-engine snapcraft.yaml
     - Add `inference-config` slot: `interface: content`, `content: inference-config`, `write: [$SNAP_COMMON/config]`
     - Add `inference-models` slot: `interface: content`, `content: inference-models`, `write: [$SNAP_COMMON/models]`
     - This exposes the config and models directories for cross-snap write access from the Greengrass snap
 
   - [x] 7.2 Update ModelManagerCore recipe environment variables
     - Update `greengrass-components/recipes/com.example.ModelManagerCore-1.0.0.yaml`
-    - Set `OVMS_CONFIG_DIR` to the content interface mount path (e.g., `{kernel:rootPath}/cv-inference-config`)
-    - Set `SNAP_COMMON` to the content interface mount path for models (e.g., `{kernel:rootPath}/cv-inference-models`)
+    - Set `OVMS_CONFIG_DIR` to the content interface mount path (e.g., `{kernel:rootPath}/ovms-engine-config`)
+    - Set `SNAP_COMMON` to the content interface mount path for models (e.g., `{kernel:rootPath}/ovms-engine-models`)
     - Document that the Greengrass snap must declare content plugs for `inference-config` and `inference-models`
 
   - [x] 7.3 Update tests to use content interface path resolution

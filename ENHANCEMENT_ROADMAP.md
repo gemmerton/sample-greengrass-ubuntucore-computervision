@@ -491,7 +491,7 @@ This hybrid approach uses inference snaps for the runtime and initial model deli
 
 ### How It Works
 
-**Custom inference snap: `cv-inference`**
+**Custom inference snap: `ovms-engine`**
 
 A custom inference snap is built following the [Canonical inference snap framework](https://documentation.ubuntu.com/inference-snaps/tutorial/create-inference-snap). The snap packages:
 
@@ -588,7 +588,7 @@ When a download completes, the model is registered in a named IoT Device Shadow 
           "model_id": "faster_rcnn",
           "model_name": "Faster R-CNN",
           "model_version": "2.0",
-          "local_path": "/var/snap/cv-inference/common/models/faster_rcnn",
+          "local_path": "/var/snap/ovms-engine/common/models/faster_rcnn",
           "last_updated": 1710000000
         }
       }
@@ -605,8 +605,8 @@ Ubuntu Core uses a read-only root filesystem. Inference snaps are fully compatib
 
 | Path | Purpose | Persistence |
 |---|---|---|
-| `$SNAP_COMMON` (`/var/snap/cv-inference/common/`) | Shared writable storage across snap revisions — used for downloaded model weights | Survives snap refreshes |
-| `$SNAP_DATA` (`/var/snap/cv-inference/current/`) | Per-revision writable storage — used for runtime configuration | Reset on snap refresh |
+| `$SNAP_COMMON` (`/var/snap/ovms-engine/common/`) | Shared writable storage across snap revisions — used for downloaded model weights | Survives snap refreshes |
+| `$SNAP_DATA` (`/var/snap/ovms-engine/current/`) | Per-revision writable storage — used for runtime configuration | Reset on snap refresh |
 
 The S3Downloader writes model files to `$SNAP_COMMON/models/`, which persists across snap refreshes and is accessible to the OVMS process running inside the snap. The OVMS `--config_path` references this directory.
 
@@ -622,13 +622,13 @@ On Ubuntu Core, `apt install` is not available. The `s5cmd` binary must be bundl
 
 ### Integration with This Solution
 
-**Step 1 — Build and publish the `cv-inference` snap.** Follow the [Canonical inference snap tutorial](https://documentation.ubuntu.com/inference-snaps/tutorial/create-inference-snap) to create the snap with OpenVINO Model Server as the runtime and Faster R-CNN as the initial model. Define engine manifests for Intel GPU and CPU fallback. Publish to a private snap store channel or install locally via `--dangerous` during development.
+**Step 1 — Build and publish the `ovms-engine` snap.** Follow the [Canonical inference snap tutorial](https://documentation.ubuntu.com/inference-snaps/tutorial/create-inference-snap) to create the snap with OpenVINO Model Server as the runtime and Faster R-CNN as the initial model. Define engine manifests for Intel GPU and CPU fallback. Publish to a private snap store channel or install locally via `--dangerous` during development.
 
 **Step 2 — Install the snap on the Ubuntu Core device.** On Ubuntu Core, install the snap and connect the required interfaces:
 
 ```bash
-sudo snap install cv-inference --channel=edge
-sudo snap connect cv-inference:hardware-observe
+sudo snap install ovms-engine --channel=edge
+sudo snap connect ovms-engine:hardware-observe
 ```
 
 The install hook auto-detects hardware and selects the optimal engine. OVMS starts on port 9000 as a `systemd` service.
@@ -640,7 +640,7 @@ The install hook auto-detects hardware and selects the optimal engine. OVMS star
   "command": "download",
   "bucket": "your-model-bucket",
   "key": "models/faster_rcnn/",
-  "destination": "/var/snap/cv-inference/common/models/faster_rcnn",
+  "destination": "/var/snap/ovms-engine/common/models/faster_rcnn",
   "model_meta": {
     "model_id": "faster_rcnn",
     "model_name": "Faster R-CNN",
@@ -671,7 +671,7 @@ The install hook auto-detects hardware and selects the optimal engine. OVMS star
 ### New Deployment Flow
 
 ```
-Build cv-inference snap with OVMS + initial model weights
+Build ovms-engine snap with OVMS + initial model weights
        |
        v
 Install snap on Ubuntu Core device (auto hardware detection)
@@ -686,7 +686,7 @@ S3Downloader Greengrass component deployed alongside
 Cloud publishes download command to s3downloader/{thingName}/commands
        |
        v
-S3Downloader pulls model to /var/snap/cv-inference/common/models/
+S3Downloader pulls model to /var/snap/ovms-engine/common/models/
        |
        v
 Model registered in "models" Device Shadow

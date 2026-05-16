@@ -20,8 +20,8 @@ This design inherits and extends the confinement model from the dynamic-model-ma
 
 | Snap | Role | Key Interfaces |
 |------|------|----------------|
-| **aws-iot-greengrass** | Orchestration — runs Greengrass components (ModelManagerCore, VLMHandler, handlers) | `snapd-control` (manage snap installs), content plug (write to cv-inference config + models), `network` (HTTP to OVMS) |
-| **cv-inference** | Inference runtime — runs OVMS, delivers model components (CV + VLM) | content slot (expose writable config + models dirs), `network-bind` (gRPC :9000 + HTTP :8000) |
+| **aws-iot-greengrass** | Orchestration — runs Greengrass components (ModelManagerCore, VLMHandler, handlers) | `snapd-control` (manage snap installs), content plug (write to ovms-engine config + models), `network` (HTTP to OVMS) |
+| **ovms-engine** | Inference runtime — runs OVMS, delivers model components (CV + VLM) | content slot (expose writable config + models dirs), `network-bind` (gRPC :9000 + HTTP :8000) |
 
 ### VLM-Specific Cross-Snap Paths
 
@@ -34,11 +34,11 @@ The content interface exposes the same writable directories used by CV models. V
 | `config/graph_config.json` | ModelManagerCore | VLM graph registry for OVMS |
 | `models/{model_id}/` | ModelManagerCore | S3-downloaded VLM artifacts |
 
-All paths are accessed via the content interface mount point from the Greengrass snap. OVMS (inside cv-inference) reads them from `$SNAP_COMMON/config/` and `$SNAP_COMMON/models/`.
+All paths are accessed via the content interface mount point from the Greengrass snap. OVMS (inside ovms-engine) reads them from `$SNAP_COMMON/config/` and `$SNAP_COMMON/models/`.
 
 ### VLM Snap Components
 
-VLM models delivered as snap components use the naming convention `cv-inference.vlm-{model_id}`. These are installed via `snapd-control` and their artifacts are accessible to OVMS at:
+VLM models delivered as snap components use the naming convention `ovms-engine.vlm-{model_id}`. These are installed via `snapd-control` and their artifacts are accessible to OVMS at:
 - `$SNAP/components/vlm-{model_id}/` (read-only, managed by snapd)
 
 ModelManagerCore reads `vlm_manifest.json` from the component path after installation (read access via content interface).
@@ -50,7 +50,7 @@ ModelManagerCore reads `vlm_manifest.json` from the component path after install
 | gRPC | 9000 | DetectionHandler, ClassificationHandler | OVMS | CV model inference |
 | HTTP | 8000 | VLMHandler | OVMS | VLM chat completions API |
 
-Both ports are bound by the cv-inference snap (`network-bind`). Handlers in the Greengrass snap connect via `localhost` using the `network` plug.
+Both ports are bound by the ovms-engine snap (`network-bind`). Handlers in the Greengrass snap connect via `localhost` using the `network` plug.
 
 ## Architecture
 
@@ -72,7 +72,7 @@ graph TD
             SM[ShadowManager]
         end
 
-        subgraph Snap["cv-inference Snap"]
+        subgraph Snap["ovms-engine Snap"]
             OVMS[OVMS - Multi-Model + VLM Graph]
             ENGINE[Engine Manager]
             GRPC[gRPC :9000 - CV Models]
@@ -131,7 +131,7 @@ A new Greengrass component (`com.example.VLMHandler`) that:
 - `VLM_PROMPT` environment variable (default: "Describe this image")
 - `VLM_MODEL_ID` component configuration (which VLM from shadow to use)
 
-### 3. cv-inference Snap (Extended)
+### 3. ovms-engine Snap (Extended)
 
 **New startup parameters:**
 - `--rest_port 8000` for HTTP chat completions API
@@ -142,7 +142,7 @@ A new Greengrass component (`com.example.VLMHandler`) that:
 - NPU: add `--rest_port`, `--graph_path`, and `--max_concurrent_requests 1`
 
 **New snap components:**
-- VLM models use naming convention `cv-inference.vlm-{model_id}`
+- VLM models use naming convention `ovms-engine.vlm-{model_id}`
 - Each VLM component includes model weights, tokenizers, chat template, and `vlm_manifest.json`
 
 **Content interface slots (extended):**
@@ -223,7 +223,7 @@ apps:
             "output_names": ["detection_boxes", "detection_classes", "detection_scores"],
             "input_shape": [1, 255, 255, 3],
             "labels_file": "labels.txt",
-            "local_path": "/snap/cv-inference/components/model-faster-rcnn/"
+            "local_path": "/snap/ovms-engine/components/model-faster-rcnn/"
           }
         },
         "llava-1.5": {
@@ -237,7 +237,7 @@ apps:
             "max_num_batched_tokens": 2048,
             "supported_features": ["image_understanding", "streaming"],
             "pipeline": "continuous_batching",
-            "local_path": "/snap/cv-inference/components/vlm-llava-1.5/"
+            "local_path": "/snap/ovms-engine/components/vlm-llava-1.5/"
           }
         }
       }
@@ -262,7 +262,7 @@ apps:
       "supported_features": ["image_understanding"],
       "pipeline": "stateful",
       "max_concurrent_requests": 1,
-      "local_path": "/snap/cv-inference/components/vlm-llava-1.5/"
+      "local_path": "/snap/ovms-engine/components/vlm-llava-1.5/"
     }
   }
 }
@@ -323,7 +323,7 @@ node {
   output_stream: "HTTP_RESPONSE_PAYLOAD:output"
   node_options: {
     [type.googleapis.com/mediapipe.LLMCalculatorOptions]: {
-      models_path: "/snap/cv-inference/components/vlm-llava-1.5/model"
+      models_path: "/snap/ovms-engine/components/vlm-llava-1.5/model"
       cache_size: 1024
       max_num_batched_tokens: 2048
       device: "GPU"
@@ -343,7 +343,7 @@ node {
   output_stream: "HTTP_RESPONSE_PAYLOAD:output"
   node_options: {
     [type.googleapis.com/mediapipe.LLMCalculatorOptions]: {
-      models_path: "/snap/cv-inference/components/vlm-llava-1.5/model"
+      models_path: "/snap/ovms-engine/components/vlm-llava-1.5/model"
       cache_size: 512
       max_num_batched_tokens: 1024
       device: "NPU"
@@ -362,7 +362,7 @@ Written by ModelManagerCore to register VLM graphs with OVMS:
   "mediapipe_config_list": [
     {
       "name": "llava-1.5",
-      "base_path": "/var/snap/cv-inference/common/config/vlm/llava-1.5"
+      "base_path": "/var/snap/ovms-engine/common/config/vlm/llava-1.5"
     }
   ]
 }
@@ -430,13 +430,13 @@ sequenceDiagram
     participant IoT as IoT Core
     participant MM as ModelManagerCore
     participant Snap as Snap Store
-    participant OVMS as cv-inference (OVMS)
+    participant OVMS as ovms-engine (OVMS)
 
     Op->>IoT: Update shadow desired: models: {llava-1.5: {model_type: vlm, source: snap}}
     IoT->>MM: Shadow delta
     MM->>MM: Detect model_type: vlm, route to VLM path
     MM->>MM: Report model status: "installing"
-    MM->>Snap: snap install cv-inference.vlm-llava-1.5
+    MM->>Snap: snap install ovms-engine.vlm-llava-1.5
     Snap-->>MM: Installation complete
     MM->>MM: Read vlm_manifest.json
     MM->>MM: Validate manifest (fields, device compatibility)
@@ -637,7 +637,7 @@ Every VLM error updates the `last_error` field in reported state:
   "last_error": {
     "timestamp": "2024-01-15T10:30:00Z",
     "error_type": "graph_generation",
-    "message": "Failed to write graph.pbtxt: Permission denied on /var/snap/cv-inference/common/config/vlm/llava-1.5/"
+    "message": "Failed to write graph.pbtxt: Permission denied on /var/snap/ovms-engine/common/config/vlm/llava-1.5/"
   }
 }
 ```
@@ -651,7 +651,7 @@ The `last_error` persists even after recovery to `ready` status, providing opera
 Unit tests cover specific examples, edge cases, and integration points:
 
 - **ModelManagerCore VLM routing**: verify model_type detection routes to correct installation path
-- **Snap install naming**: verify `cv-inference.vlm-{model_id}` convention
+- **Snap install naming**: verify `ovms-engine.vlm-{model_id}` convention
 - **S3 download path**: verify download to `$SNAP_COMMON/models/{model_id}/`
 - **Graph file path**: verify write to `$SNAP_COMMON/config/vlm/{model_id}/graph.pbtxt`
 - **VLMHandler retry**: verify 10-second retry interval when model not ready
