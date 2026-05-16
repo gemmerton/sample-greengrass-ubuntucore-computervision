@@ -23,13 +23,13 @@ base: core24
 grade: stable
 confinement: strict
 
-architectures:
-  - build-on: amd64
+platforms:
+  amd64:
 
 environment:
   # Standard inference snap environment variables
   SNAP_COMPONENTS: /snap/$SNAP_INSTANCE_NAME/components/$SNAP_REVISION
-  ARCH_TRIPLET: $CRAFT_ARCH_TRIPLET_BUILD_FOR
+  ARCH_TRIPLET: x86_64-linux-gnu
 
 parts:
   # Canonical Inference Snaps CLI (modelctl)
@@ -64,6 +64,7 @@ parts:
   #   docker cp ovms-extract:/ovms/bin/ovms ./ovms-binary && \
   #   docker rm ovms-extract
   ovms:
+    source: .
     plugin: nil
     override-build: |
       # Fetch OVMS pre-built binary from the official Docker image
@@ -76,7 +77,10 @@ parts:
       # For local dev, place pre-extracted binaries in a local directory
       if [ -f "${CRAFT_PART_SRC}/ovms" ]; then
         echo "Using pre-extracted OVMS binary from source directory"
-        install -D "${CRAFT_PART_SRC}/ovms" "${CRAFT_PART_INSTALL}/usr/bin/ovms"
+        # Install to per-component intermediate paths; organize routes to component partitions
+        install -D "${CRAFT_PART_SRC}/ovms" "${CRAFT_PART_INSTALL}/ovms-cpu-stage/usr/bin/ovms"
+        install -D "${CRAFT_PART_SRC}/ovms" "${CRAFT_PART_INSTALL}/ovms-gpu-stage/usr/bin/ovms"
+        install -D "${CRAFT_PART_SRC}/ovms" "${CRAFT_PART_INSTALL}/ovms-npu-stage/usr/bin/ovms"
       else
         echo "WARNING: OVMS binary not found at ${CRAFT_PART_SRC}/ovms"
         echo "Extract it from the Docker image before building:"
@@ -87,10 +91,20 @@ parts:
         exit 1
       fi
 
-      # Stage shared libraries if present
+      # Stage shared libraries into each component's area if present
       if [ -d "${CRAFT_PART_SRC}/lib" ]; then
-        cp -r "${CRAFT_PART_SRC}/lib/"* "${CRAFT_PART_INSTALL}/usr/lib/" 2>/dev/null || true
+        for variant in cpu gpu npu; do
+          mkdir -p "${CRAFT_PART_INSTALL}/ovms-${variant}-stage/usr/lib"
+          cp -r "${CRAFT_PART_SRC}/lib/." "${CRAFT_PART_INSTALL}/ovms-${variant}-stage/usr/lib/"
+        done
       fi
+    organize:
+      "ovms-cpu-stage/usr/bin/ovms": "(component/ovms-cpu)/usr/bin/ovms"
+      "ovms-gpu-stage/usr/bin/ovms": "(component/ovms-gpu)/usr/bin/ovms"
+      "ovms-npu-stage/usr/bin/ovms": "(component/ovms-npu)/usr/bin/ovms"
+      "ovms-cpu-stage/usr/lib/*": "(component/ovms-cpu)/usr/lib/"
+      "ovms-gpu-stage/usr/lib/*": "(component/ovms-gpu)/usr/lib/"
+      "ovms-npu-stage/usr/lib/*": "(component/ovms-npu)/usr/lib/"
     stage-packages:
       - libgomp1
       - libxml2
@@ -117,11 +131,11 @@ parts:
     source: components
     plugin: dump
     organize:
-      "ovms-cpu": (component/ovms-cpu)
-      "ovms-gpu": (component/ovms-gpu)
-      "ovms-npu": (component/ovms-npu)
-      "model-faster-rcnn": (component/model-faster-rcnn)
-      "model-efficientnet": (component/model-efficientnet)
+      "ovms-cpu/*": (component/ovms-cpu)/
+      "ovms-gpu/*": (component/ovms-gpu)/
+      "ovms-npu/*": (component/ovms-npu)/
+      "model-faster-rcnn/*": (component/model-faster-rcnn)/
+      "model-efficientnet/*": (component/model-efficientnet)/
 
 apps:
   # CLI exposed as the snap name (ovms-engine)
