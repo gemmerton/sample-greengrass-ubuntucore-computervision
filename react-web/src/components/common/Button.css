@@ -38,47 +38,42 @@
 
 /* Primary Button Variant */
 .aws-button--primary {
-  background-color: var(--color-primary);
+  background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-dark) 100%);
   color: var(--color-text-inverse);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow-glow);
 }
 
 .aws-button--primary:hover:not(:disabled) {
-  background-color: var(--color-primary-dark);
-  box-shadow: var(--shadow-md);
-  /* GPU-accelerated transform */
+  box-shadow: 0 0 30px rgba(255, 153, 0, 0.35);
   transform: translateY(-1px);
 }
 
 .aws-button--primary:active:not(:disabled) {
-  /* Pressed state - GPU-accelerated */
   transform: translateY(0);
-  box-shadow: var(--shadow-xs);
+  box-shadow: var(--shadow-sm);
 }
 
 .aws-button--primary:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 3px rgba(255, 153, 0, 0.3);
+  box-shadow: 0 0 0 3px var(--color-primary-glow), var(--shadow-glow);
 }
 
 /* Secondary Button Variant */
 .aws-button--secondary {
-  background-color: var(--color-surface);
+  background-color: var(--color-surface-elevated);
   color: var(--color-text-primary);
-  border: 2px solid var(--color-border);
+  border: 1px solid var(--color-border);
   box-shadow: var(--shadow-xs);
 }
 
 .aws-button--secondary:hover:not(:disabled) {
-  background-color: var(--color-background);
+  background-color: var(--color-surface-hover);
   border-color: var(--color-primary);
-  box-shadow: var(--shadow-sm);
-  /* GPU-accelerated transform */
+  box-shadow: var(--shadow-glow);
   transform: translateY(-1px);
 }
 
 .aws-button--secondary:active:not(:disabled) {
-  /* Pressed state - GPU-accelerated */
   transform: translateY(0);
   box-shadow: none;
 }
@@ -86,7 +81,7 @@
 .aws-button--secondary:focus-visible {
   outline: none;
   border-color: var(--color-primary);
-  box-shadow: 0 0 0 3px rgba(255, 153, 0, 0.2);
+  box-shadow: 0 0 0 3px var(--color-primary-glow);
 }
 
 /* Disabled State */

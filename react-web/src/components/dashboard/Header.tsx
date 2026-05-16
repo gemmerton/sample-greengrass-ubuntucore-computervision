@@ -29,17 +29,17 @@ export const Header: React.FC<HeaderProps> = ({ className = '' }) => {
         <div className="dashboard-header__brand">
           <div className="dashboard-header__logos">
             <img
-              src="https://d0.awsstatic.com/logos/powered-by-aws.png"
+              src="/logos/aws-white.png"
               alt="AWS Logo"
               className="dashboard-header__logo dashboard-header__logo--aws"
             />
             <img
-              src="https://upload.wikimedia.org/wikipedia/commons/thumb/7/7d/Intel_logo_%282006-2020%29.svg/200px-Intel_logo_%282006-2020%29.svg.png"
+              src="/logos/intel-white.svg"
               alt="Intel Logo"
               className="dashboard-header__logo dashboard-header__logo--intel"
             />
             <img
-              src="https://assets.ubuntu.com/v1/29985a98-ubuntu-logo32.png"
+              src="/logos/ubuntu-white.svg"
               alt="Ubuntu/Canonical Logo"
               className="dashboard-header__logo dashboard-header__logo--ubuntu"
             />

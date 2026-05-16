@@ -1,23 +1,34 @@
 /**
- * Dashboard Header Styles
- * Modern, clean design with proper spacing and alignment
+ * Dashboard Header - Bold dark gradient with glowing accents
  */
 
 .dashboard-header {
-  /* Clean header design with surface background */
-  background: var(--color-surface);
-  border-bottom: 1px solid var(--color-border);
-  box-shadow: var(--shadow-xs);
+  background: var(--color-header-bg);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5);
   position: sticky;
   top: 0;
   z-index: var(--z-sticky);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Subtle animated gradient shimmer on the header bottom edge */
+.dashboard-header::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent 0%, var(--color-primary) 30%, var(--aws-teal) 70%, transparent 100%);
+  opacity: 0.7;
 }
 
 .dashboard-header__container {
-  /* Improved alignment with max-width constraint */
   max-width: 1400px;
   margin: 0 auto;
-  padding: var(--spacing-lg) var(--spacing-xl);
+  padding: var(--spacing-md) var(--spacing-xl);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -30,7 +41,7 @@
   align-items: center;
   gap: var(--spacing-lg);
   flex: 1;
-  min-width: 0; /* Allow text truncation */
+  min-width: 0;
 }
 
 /* Logos Container */
@@ -39,58 +50,69 @@
   align-items: center;
   gap: var(--spacing-md);
   flex-shrink: 0;
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: var(--border-radius-lg);
+  border: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .dashboard-header__logo {
-  height: 32px;
+  height: 26px;
   width: auto;
   flex-shrink: 0;
-  transition: opacity var(--transition-fast);
+  transition: all var(--transition-fast);
+  opacity: 0.85;
 }
 
 .dashboard-header__logo:hover {
-  opacity: 0.8;
+  opacity: 1;
+  transform: scale(1.08);
 }
 
-/* Individual Logo Styling */
 .dashboard-header__logo--aws {
-  height: 32px;
+  height: 26px;
 }
 
 .dashboard-header__logo--intel {
-  height: 28px;
-  filter: brightness(1.1);
+  height: 22px;
 }
 
 .dashboard-header__logo--ubuntu {
-  height: 32px;
+  height: 26px;
 }
 
 .dashboard-header__title-group {
-  min-width: 0; /* Allow text truncation */
+  min-width: 0;
 }
 
 .dashboard-header__title {
-  font-size: var(--font-size-xl);
-  font-weight: var(--font-weight-bold);
-  color: var(--color-text-primary);
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-extrabold);
+  color: #ffffff;
   margin: 0;
   line-height: var(--line-height-tight);
+  letter-spacing: var(--letter-spacing-tight);
+  background: linear-gradient(135deg, #ffffff 0%, #e2e8f0 50%, var(--color-primary-light) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 .dashboard-header__subtitle {
   font-size: var(--font-size-sm);
-  color: var(--color-text-secondary);
+  color: rgba(255, 255, 255, 0.45);
   margin: 0;
-  margin-top: var(--spacing-xs);
+  margin-top: 2px;
   line-height: var(--line-height-normal);
+  letter-spacing: var(--letter-spacing-wide);
+  font-weight: var(--font-weight-medium);
 }
 
 /* Actions Section */
 .dashboard-header__actions {
   display: flex;
   align-items: center;
-  gap: var(--spacing-lg);
+  gap: var(--spacing-md);
   flex-shrink: 0;
 }
 
@@ -98,99 +120,91 @@
 .dashboard-header__user {
   display: flex;
   align-items: center;
-  gap: var(--spacing-md);
-  padding: var(--spacing-sm) var(--spacing-md);
-  background: var(--color-surface);
+  gap: var(--spacing-sm);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: rgba(255, 255, 255, 0.04);
   border-radius: var(--border-radius-md);
-  border: 1px solid var(--color-border);
-  transition: border-color var(--transition-fast);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  transition: all var(--transition-fast);
 }
 
 .dashboard-header__user:hover {
-  border-color: var(--color-border);
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.15);
 }
 
 .dashboard-header__user-info {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: var(--spacing-xs);
-  min-width: 0; /* Allow text truncation */
+  gap: 1px;
+  min-width: 0;
 }
 
 .dashboard-header__user-name {
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-medium);
-  color: var(--color-text-primary);
+  color: rgba(255, 255, 255, 0.85);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 180px;
+  max-width: 160px;
 }
 
 .dashboard-header__user-role {
   font-size: var(--font-size-xs);
-  color: var(--color-text-secondary);
+  color: rgba(255, 255, 255, 0.4);
   white-space: nowrap;
 }
 
 .dashboard-header__user-avatar {
-  width: 40px;
-  height: 40px;
+  width: 36px;
+  height: 36px;
   border-radius: var(--border-radius-full);
-  background: var(--color-primary);
+  background: linear-gradient(135deg, var(--aws-orange) 0%, #ff6b35 100%);
   color: var(--color-text-inverse);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: var(--font-size-base);
+  font-size: var(--font-size-sm);
   font-weight: var(--font-weight-bold);
   flex-shrink: 0;
+  box-shadow: 0 2px 12px rgba(255, 153, 0, 0.4);
 }
 
 .dashboard-header__sign-out {
   flex-shrink: 0;
 }
 
-/* Responsive Design */
-
-/* Tablet breakpoint (max-width: 1024px) */
-@media (max-width: 1024px) {
-  .dashboard-header__container {
-    padding: var(--spacing-md) var(--spacing-lg);
-    gap: var(--spacing-lg);
-  }
-
-  .dashboard-header__brand {
-    gap: var(--spacing-md);
-  }
-}
-
-/* Tablet breakpoint (max-width: 768px) */
+/* Responsive */
 @media (max-width: 768px) {
   .dashboard-header__container {
-    padding: var(--spacing-md);
-    gap: var(--spacing-md);
-  }
-
-  .dashboard-header__brand {
+    padding: var(--spacing-sm) var(--spacing-md);
     gap: var(--spacing-md);
   }
 
   .dashboard-header__logos {
     gap: var(--spacing-sm);
+    padding: var(--spacing-xs) var(--spacing-sm);
   }
 
-  .dashboard-header__logo--aws {
-    height: 28px;
+  .dashboard-header__logo--aws { height: 22px; }
+  .dashboard-header__logo--intel { height: 18px; }
+  .dashboard-header__logo--ubuntu { height: 22px; }
+
+  .dashboard-header__title {
+    font-size: var(--font-size-xl);
   }
 
-  .dashboard-header__logo--intel {
-    height: 24px;
+  .dashboard-header__subtitle {
+    font-size: var(--font-size-xs);
   }
+}
 
-  .dashboard-header__logo--ubuntu {
-    height: 28px;
+@media (max-width: 640px) {
+  .dashboard-header__container {
+    padding: var(--spacing-sm);
+    gap: var(--spacing-sm);
   }
 
   .dashboard-header__title {
@@ -198,111 +212,16 @@
   }
 
   .dashboard-header__subtitle {
-    font-size: var(--font-size-xs);
-  }
-
-  .dashboard-header__actions {
-    gap: var(--spacing-md);
-  }
-
-  .dashboard-header__user {
-    padding: var(--spacing-sm);
-  }
-
-  .dashboard-header__user-avatar {
-    width: 36px;
-    height: 36px;
-    font-size: var(--font-size-sm);
-  }
-}
-
-/* Mobile breakpoint (max-width: 640px) */
-@media (max-width: 640px) {
-  .dashboard-header__container {
-    padding: var(--spacing-sm) var(--spacing-md);
-    gap: var(--spacing-sm);
-  }
-
-  .dashboard-header__brand {
-    gap: var(--spacing-sm);
-  }
-
-  .dashboard-header__title {
-    font-size: var(--font-size-base);
-  }
-
-  .dashboard-header__subtitle {
-    display: none; /* Hide subtitle on mobile */
+    display: none;
   }
 
   .dashboard-header__user-info {
-    display: none; /* Hide user info text on mobile */
+    display: none;
   }
 
   .dashboard-header__user {
     padding: var(--spacing-xs);
     border: none;
     background: transparent;
-  }
-
-  .dashboard-header__actions {
-    gap: var(--spacing-sm);
-  }
-
-  .dashboard-header__user-avatar {
-    width: 32px;
-    height: 32px;
-    font-size: var(--font-size-sm);
-  }
-}
-
-/* Small mobile breakpoint (max-width: 480px) */
-@media (max-width: 480px) {
-  .dashboard-header__container {
-    padding: var(--spacing-sm);
-  }
-
-  .dashboard-header__logos {
-    gap: var(--spacing-xs);
-  }
-
-  .dashboard-header__logo--aws {
-    height: 24px;
-  }
-
-  .dashboard-header__logo--intel {
-    height: 20px;
-  }
-
-  .dashboard-header__logo--ubuntu {
-    height: 24px;
-  }
-
-  .dashboard-header__title {
-    font-size: var(--font-size-sm);
-  }
-}
-
-/* High contrast mode */
-@media (prefers-contrast: high) {
-  .dashboard-header {
-    border-bottom-width: 2px;
-  }
-
-  .dashboard-header__user {
-    border-width: 2px;
-  }
-}
-
-/* Dark mode support */
-@media (prefers-color-scheme: dark) {
-  .dashboard-header {
-    background: var(--color-background);
-    border-bottom-color: var(--color-border);
-  }
-
-  .dashboard-header__user {
-    background: var(--color-surface);
-    border-color: var(--color-border);
   }
 }

@@ -1,12 +1,10 @@
 /**
- * App.css - Modern Application Styles
- * Consistent with the design system tokens
+ * App.css - Dark Theme Application Styles
  */
 
 .App {
-  /* Clean, minimal container */
   min-height: 100vh;
-  background: var(--color-background);
+  background: var(--color-background-gradient);
   color: var(--color-text-primary);
   font-family: var(--font-family-primary);
 }
@@ -20,7 +18,7 @@
   background: var(--color-primary);
   color: var(--color-text-inverse);
   text-decoration: none;
-  font-weight: var(--font-weight-medium);
+  font-weight: var(--font-weight-semibold);
   border-radius: var(--border-radius-md);
   z-index: var(--z-tooltip);
   transition: top var(--transition-fast);
