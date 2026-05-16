@@ -42,13 +42,17 @@ def manager(mock_ipc_client):
 
     with patch.dict(os.environ, {
         'AWS_IOT_THING_NAME': 'test-thing',
-        'SNAP_COMPONENTS': '/snap/cv-inference/current/components',
-        'SNAP_COMMON': '/var/snap/cv-inference/common',
-        'OVMS_CONFIG_DIR': '/var/snap/cv-inference/common/config',
+        'SNAP_COMPONENTS': '/snap/ovms-engine/components/current',
+        'SNAP_COMMON': '/var/snap/ovms-engine/common',
+        'OVMS_CONFIG_DIR': '/var/snap/ovms-engine/common/config',
     }):
         from model_manager_core import ModelManagerCore
         mgr = ModelManagerCore()
         mgr.ipc_client = mock_ipc_client
+        # Mock the snapd client to avoid real socket connections
+        mgr.snapd = MagicMock()
+        mgr.snapd.install_component = MagicMock(return_value={})
+        mgr.snapd.remove_component = MagicMock(return_value={})
         yield mgr
 
 
@@ -64,34 +68,26 @@ SAMPLE_MANIFEST = {
 
 
 class TestSnapInstallCommand:
-    """Tests for the snap install subprocess execution."""
+    """Tests for the snapd REST API snap component installation."""
 
     def test_runs_snap_install_with_correct_component_name(self, manager):
-        """Snap install is called with cv-inference.model-{model_id}."""
-        with patch('subprocess.run') as mock_run, \
-             patch('builtins.open', mock_open(read_data=json.dumps(SAMPLE_MANIFEST))):
-            mock_run.return_value = MagicMock(returncode=0, stdout='', stderr='')
+        """Snapd install_component is called with ovms-engine and model-{model_id}."""
+        with patch('builtins.open', mock_open(read_data=json.dumps(SAMPLE_MANIFEST))):
             manager._install_snap_model('faster-rcnn')
 
-            mock_run.assert_called_once_with(
-                ['snap', 'install', 'cv-inference.model-faster-rcnn'],
-                capture_output=True,
-                text=True,
-                timeout=300,
+            manager.snapd.install_component.assert_called_once_with(
+                'ovms-engine', 'model-faster-rcnn', timeout=300,
             )
 
-    def test_reports_failed_on_nonzero_exit_code(self, manager, mock_ipc_client):
-        """Reports failed status when snap install returns non-zero exit code."""
-        with patch('subprocess.run') as mock_run:
-            mock_run.return_value = MagicMock(
-                returncode=1,
-                stdout='',
-                stderr='error: snap "cv-inference.model-bad" not found'
-            )
-            manager._install_snap_model('bad')
+    def test_reports_failed_on_snapd_error(self, manager, mock_ipc_client):
+        """Reports failed status when snapd install_component raises SnapdError."""
+        from snapd_client import SnapdError
+        manager.snapd.install_component.side_effect = SnapdError(
+            'snap "ovms-engine+model-bad" not found'
+        )
+        manager._install_snap_model('bad')
 
         update_calls = mock_ipc_client.update_thing_shadow.call_args_list
-        # Last call should be the failed status (first was installing from _handle_model_install)
         payload = json.loads(update_calls[-1].kwargs['payload'])
         models = payload['state']['reported']['models']
         assert models['bad']['status'] == 'failed'
@@ -99,58 +95,45 @@ class TestSnapInstallCommand:
         assert 'not found' in models['bad']['reason']
 
     def test_reports_failed_on_timeout(self, manager, mock_ipc_client):
-        """Reports failed status when snap install times out."""
-        with patch('subprocess.run') as mock_run:
-            mock_run.side_effect = subprocess.TimeoutExpired(cmd='snap', timeout=300)
-            manager._install_snap_model('slow-model')
+        """Reports failed status when snapd operation times out."""
+        from snapd_client import SnapdError
+        manager.snapd.install_component.side_effect = SnapdError(
+            'Snap operation timed out after 300s (change 123)'
+        )
+        manager._install_snap_model('slow-model')
 
         update_calls = mock_ipc_client.update_thing_shadow.call_args_list
         payload = json.loads(update_calls[-1].kwargs['payload'])
         models = payload['state']['reported']['models']
         assert models['slow-model']['status'] == 'failed'
-        assert 'timed out' in models['slow-model']['reason']
+        assert 'snap install failed' in models['slow-model']['reason']
 
-    def test_reports_failed_on_os_error(self, manager, mock_ipc_client):
-        """Reports failed status when snap command cannot be executed."""
-        with patch('subprocess.run') as mock_run:
-            mock_run.side_effect = OSError("No such file or directory: 'snap'")
-            manager._install_snap_model('no-snap')
+    def test_reports_failed_on_connection_error(self, manager, mock_ipc_client):
+        """Reports failed status when snapd socket is unavailable."""
+        from snapd_client import SnapdError
+        manager.snapd.install_component.side_effect = SnapdError(
+            "No such file or directory: '/run/snapd.socket'"
+        )
+        manager._install_snap_model('no-snap')
 
         update_calls = mock_ipc_client.update_thing_shadow.call_args_list
         payload = json.loads(update_calls[-1].kwargs['payload'])
         models = payload['state']['reported']['models']
         assert models['no-snap']['status'] == 'failed'
-        assert 'Failed to execute snap command' in models['no-snap']['reason']
+        assert 'snap install failed' in models['no-snap']['reason']
 
-    def test_uses_stderr_for_error_message(self, manager, mock_ipc_client):
-        """Prefers stderr over stdout for error messages."""
-        with patch('subprocess.run') as mock_run:
-            mock_run.return_value = MagicMock(
-                returncode=1,
-                stdout='some stdout output',
-                stderr='specific error from stderr'
-            )
-            manager._install_snap_model('err-model')
+    def test_error_message_includes_snapd_error_detail(self, manager, mock_ipc_client):
+        """Error reason includes the specific SnapdError message."""
+        from snapd_client import SnapdError
+        manager.snapd.install_component.side_effect = SnapdError(
+            'specific error from snapd'
+        )
+        manager._install_snap_model('err-model')
 
         update_calls = mock_ipc_client.update_thing_shadow.call_args_list
         payload = json.loads(update_calls[-1].kwargs['payload'])
         models = payload['state']['reported']['models']
-        assert 'specific error from stderr' in models['err-model']['reason']
-
-    def test_falls_back_to_stdout_when_stderr_empty(self, manager, mock_ipc_client):
-        """Uses stdout for error message when stderr is empty."""
-        with patch('subprocess.run') as mock_run:
-            mock_run.return_value = MagicMock(
-                returncode=1,
-                stdout='stdout error info',
-                stderr=''
-            )
-            manager._install_snap_model('fallback-model')
-
-        update_calls = mock_ipc_client.update_thing_shadow.call_args_list
-        payload = json.loads(update_calls[-1].kwargs['payload'])
-        models = payload['state']['reported']['models']
-        assert 'stdout error info' in models['fallback-model']['reason']
+        assert 'specific error from snapd' in models['err-model']['reason']
 
 
 class TestManifestReading:
@@ -158,21 +141,17 @@ class TestManifestReading:
 
     def test_reads_manifest_from_correct_path(self, manager):
         """Reads manifest.json from $SNAP_COMPONENTS/model-{model_id}/manifest.json."""
-        with patch('subprocess.run') as mock_run, \
-             patch('builtins.open', mock_open(read_data=json.dumps(SAMPLE_MANIFEST))) as m_open:
-            mock_run.return_value = MagicMock(returncode=0, stdout='', stderr='')
+        with patch('builtins.open', mock_open(read_data=json.dumps(SAMPLE_MANIFEST))) as m_open:
             manager._install_snap_model('faster-rcnn')
 
             m_open.assert_called_once_with(
-                '/snap/cv-inference/current/components/model-faster-rcnn/manifest.json',
+                '/snap/ovms-engine/components/current/model-faster-rcnn/manifest.json',
                 'r'
             )
 
     def test_reports_failed_when_manifest_not_found(self, manager, mock_ipc_client):
         """Reports failed status when manifest.json does not exist."""
-        with patch('subprocess.run') as mock_run, \
-             patch('builtins.open', side_effect=FileNotFoundError("No such file")):
-            mock_run.return_value = MagicMock(returncode=0, stdout='', stderr='')
+        with patch('builtins.open', side_effect=FileNotFoundError("No such file")):
             manager._install_snap_model('no-manifest')
 
         update_calls = mock_ipc_client.update_thing_shadow.call_args_list
@@ -183,9 +162,7 @@ class TestManifestReading:
 
     def test_reports_failed_when_manifest_invalid_json(self, manager, mock_ipc_client):
         """Reports failed status when manifest.json contains invalid JSON."""
-        with patch('subprocess.run') as mock_run, \
-             patch('builtins.open', mock_open(read_data='not valid json {')):
-            mock_run.return_value = MagicMock(returncode=0, stdout='', stderr='')
+        with patch('builtins.open', mock_open(read_data='not valid json {')):
             manager._install_snap_model('bad-json')
 
         update_calls = mock_ipc_client.update_thing_shadow.call_args_list
@@ -200,9 +177,7 @@ class TestSuccessfulInstallation:
 
     def test_reports_ready_with_metadata_on_success(self, manager, mock_ipc_client):
         """Reports ready status with model metadata from manifest on success."""
-        with patch('subprocess.run') as mock_run, \
-             patch('builtins.open', mock_open(read_data=json.dumps(SAMPLE_MANIFEST))):
-            mock_run.return_value = MagicMock(returncode=0, stdout='', stderr='')
+        with patch('builtins.open', mock_open(read_data=json.dumps(SAMPLE_MANIFEST))):
             manager._install_snap_model('faster-rcnn')
 
         update_calls = mock_ipc_client.update_thing_shadow.call_args_list
@@ -221,21 +196,17 @@ class TestSuccessfulInstallation:
 
     def test_metadata_includes_local_path(self, manager, mock_ipc_client):
         """Model metadata includes the local_path to the installed component."""
-        with patch('subprocess.run') as mock_run, \
-             patch('builtins.open', mock_open(read_data=json.dumps(SAMPLE_MANIFEST))):
-            mock_run.return_value = MagicMock(returncode=0, stdout='', stderr='')
+        with patch('builtins.open', mock_open(read_data=json.dumps(SAMPLE_MANIFEST))):
             manager._install_snap_model('faster-rcnn')
 
         update_calls = mock_ipc_client.update_thing_shadow.call_args_list
         payload = json.loads(update_calls[-1].kwargs['payload'])
         metadata = payload['state']['reported']['models']['faster-rcnn']['model_metadata']
-        assert metadata['local_path'] == '/snap/cv-inference/current/components/model-faster-rcnn'
+        assert metadata['local_path'] == '/snap/ovms-engine/components/current/model-faster-rcnn'
 
     def test_metadata_includes_version(self, manager, mock_ipc_client):
         """Model metadata includes the version from manifest."""
-        with patch('subprocess.run') as mock_run, \
-             patch('builtins.open', mock_open(read_data=json.dumps(SAMPLE_MANIFEST))):
-            mock_run.return_value = MagicMock(returncode=0, stdout='', stderr='')
+        with patch('builtins.open', mock_open(read_data=json.dumps(SAMPLE_MANIFEST))):
             manager._install_snap_model('faster-rcnn')
 
         update_calls = mock_ipc_client.update_thing_shadow.call_args_list
@@ -255,9 +226,7 @@ class TestSuccessfulInstallation:
             "labels_file": "labels.txt"
         }
 
-        with patch('subprocess.run') as mock_run, \
-             patch('builtins.open', mock_open(read_data=json.dumps(efficientnet_manifest))):
-            mock_run.return_value = MagicMock(returncode=0, stdout='', stderr='')
+        with patch('builtins.open', mock_open(read_data=json.dumps(efficientnet_manifest))):
             manager._install_snap_model('efficientnet')
 
         update_calls = mock_ipc_client.update_thing_shadow.call_args_list
@@ -267,4 +236,4 @@ class TestSuccessfulInstallation:
         assert metadata['input_name'] == 'input'
         assert metadata['output_names'] == ['predictions']
         assert metadata['input_shape'] == [1, 224, 224, 3]
-        assert metadata['local_path'] == '/snap/cv-inference/current/components/model-efficientnet'
+        assert metadata['local_path'] == '/snap/ovms-engine/components/current/model-efficientnet'

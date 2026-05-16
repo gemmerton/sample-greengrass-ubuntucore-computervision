@@ -74,17 +74,17 @@ CLASSIFICATION_LABELS = "tench\ngoldfish\ngreat white shark\ntiger shark\nhammer
 def temp_dirs(tmp_path):
     """Create temporary directories simulating the content interface mount point structure.
 
-    With the content interface, the Greengrass snap mounts cv-inference's directories
+    With the content interface, the Greengrass snap mounts ovms-engine's directories
     at separate paths (not nested):
-    - SNAP_COMMON (models mount) -> cv-inference's $SNAP_COMMON/models/
-    - OVMS_CONFIG_DIR (config mount) -> cv-inference's $SNAP_COMMON/config/
+    - SNAP_COMMON (models mount) -> ovms-engine's $SNAP_COMMON/models/
+    - OVMS_CONFIG_DIR (config mount) -> ovms-engine's $SNAP_COMMON/config/
     - SNAP_COMPONENTS (read-only snap components path)
 
     These are independent mount points, so config_dir is NOT a subdirectory of snap_common.
     """
     snap_components = tmp_path / "snap-components"
-    snap_common = tmp_path / "cv-inference-models"
-    config_dir = tmp_path / "cv-inference-config"
+    snap_common = tmp_path / "ovms-engine-models"
+    config_dir = tmp_path / "ovms-engine-config"
     snap_components.mkdir()
     snap_common.mkdir()
     config_dir.mkdir()
@@ -173,26 +173,26 @@ class TestEndToEndBothModels:
             manager.ipc_client = mock_ipc
 
         # Simulate shadow delta with both models
-        with patch('subprocess.run') as mock_run:
-            mock_run.return_value = MagicMock(returncode=0, stdout='', stderr='')
+        manager.snapd = MagicMock()
+        manager.snapd.install_component = MagicMock(return_value={})
 
-            delta_event = MagicMock()
-            delta_event.message.payload = json.dumps({
-                "state": {
-                    "models": {
-                        "faster-rcnn": {"source": "snap"},
-                        "efficientnet": {"source": "snap"},
-                    }
+        delta_event = MagicMock()
+        delta_event.message.payload = json.dumps({
+            "state": {
+                "models": {
+                    "faster-rcnn": {"source": "snap"},
+                    "efficientnet": {"source": "snap"},
                 }
-            }).encode('utf-8')
+            }
+        }).encode('utf-8')
 
-            manager._on_shadow_delta(delta_event)
+        manager._on_shadow_delta(delta_event)
 
-        # Verify snap install called for both models
-        snap_calls = mock_run.call_args_list
-        snap_commands = [c[0][0] for c in snap_calls]
-        assert ['snap', 'install', 'cv-inference.model-faster-rcnn'] in snap_commands
-        assert ['snap', 'install', 'cv-inference.model-efficientnet'] in snap_commands
+        # Verify snapd install_component called for both models
+        install_calls = manager.snapd.install_component.call_args_list
+        called_components = [c[0][1] for c in install_calls]
+        assert 'model-faster-rcnn' in called_components
+        assert 'model-efficientnet' in called_components
 
         # Verify OVMS config contains both models
         config = _read_ovms_config(temp_dirs['config_dir'])
@@ -504,19 +504,19 @@ class TestEndToEndBothModels:
             manager = ModelManagerCore()
             manager.ipc_client = mock_ipc
 
-        with patch('subprocess.run') as mock_run:
-            mock_run.return_value = MagicMock(returncode=0, stdout='', stderr='')
+        manager.snapd = MagicMock()
+        manager.snapd.install_component = MagicMock(return_value={})
 
-            delta_event = MagicMock()
-            delta_event.message.payload = json.dumps({
-                "state": {
-                    "models": {
-                        "faster-rcnn": {"source": "snap"},
-                        "efficientnet": {"source": "snap"},
-                    }
+        delta_event = MagicMock()
+        delta_event.message.payload = json.dumps({
+            "state": {
+                "models": {
+                    "faster-rcnn": {"source": "snap"},
+                    "efficientnet": {"source": "snap"},
                 }
-            }).encode('utf-8')
-            manager._on_shadow_delta(delta_event)
+            }
+        }).encode('utf-8')
+        manager._on_shadow_delta(delta_event)
 
         # Verify OVMS config has both models
         config = _read_ovms_config(temp_dirs['config_dir'])

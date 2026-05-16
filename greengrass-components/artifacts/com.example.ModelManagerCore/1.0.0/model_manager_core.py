@@ -36,16 +36,19 @@ SHADOW_NAME = "model-config"
 class ModelManagerCore:
     """Watches the model-config shadow and orchestrates model installation/removal."""
 
+    # Snap name for the inference engine
+    SNAP_NAME = "ovms-engine"
+
     def __init__(self):
         self.thing_name = os.environ.get("AWS_IOT_THING_NAME", "")
         self.snap_components_path = os.environ.get(
-            "SNAP_COMPONENTS", "/snap/cv-inference/current/components"
+            "SNAP_COMPONENTS", "/snap/ovms-engine/components/current"
         )
         self.snap_common_path = os.environ.get(
-            "SNAP_COMMON", "/var/snap/cv-inference/common"
+            "SNAP_COMMON", "/var/snap/ovms-engine/common"
         )
         self.ovms_config_dir = os.environ.get(
-            "OVMS_CONFIG_DIR", "/var/snap/cv-inference/common/config"
+            "OVMS_CONFIG_DIR", "/var/snap/ovms-engine/common/config"
         )
 
         # Track current reported models state locally
@@ -220,21 +223,21 @@ class ModelManagerCore:
         """Install a model via snap component and read its manifest.
 
         Uses the snapd REST API (via /run/snapd.socket) to install the snap
-        component of the cv-inference snap, then reads the manifest.json from
+        component of the ovms-engine snap, then reads the manifest.json from
         the installed component path to extract model metadata for OVMS configuration.
 
         Args:
             model_id: The model identifier (e.g. 'faster-rcnn').
         """
         component_name = f"model-{model_id}"
-        logger.info("Installing snap component: cv-inference+%s", component_name)
+        logger.info("Installing snap component: %s+%s", self.SNAP_NAME, component_name)
 
         try:
-            self.snapd.install_component("cv-inference", component_name, timeout=300)
-            logger.info("Snap component 'cv-inference+%s' installed successfully", component_name)
+            self.snapd.install_component(self.SNAP_NAME, component_name, timeout=300)
+            logger.info("Snap component '%s+%s' installed successfully", self.SNAP_NAME, component_name)
 
         except SnapdError as e:
-            logger.error("Snap install failed for 'cv-inference+%s': %s", component_name, e)
+            logger.error("Snap install failed for '%s+%s': %s", self.SNAP_NAME, component_name, e)
             self._report_model_status(
                 model_id, "failed", reason=f"snap install failed: {e}"
             )

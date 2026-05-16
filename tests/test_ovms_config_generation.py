@@ -56,8 +56,8 @@ def manager(mock_ipc_client, temp_config_dir):
 
     with patch.dict(os.environ, {
         'AWS_IOT_THING_NAME': 'test-thing',
-        'SNAP_COMPONENTS': '/snap/cv-inference/current/components',
-        'SNAP_COMMON': '/var/snap/cv-inference/common',
+        'SNAP_COMPONENTS': '/snap/ovms-engine/current/components',
+        'SNAP_COMMON': '/var/snap/ovms-engine/common',
         'OVMS_CONFIG_DIR': temp_config_dir,
     }):
         from model_manager_core import ModelManagerCore
@@ -71,7 +71,7 @@ class TestWriteMultiModelConfig:
 
     def test_writes_single_model(self, temp_config_dir):
         """Writes config with a single model entry."""
-        models = [{"name": "faster_rcnn", "base_path": "/snap/cv-inference/components/model-faster-rcnn"}]
+        models = [{"name": "faster_rcnn", "base_path": "/snap/ovms-engine/components/model-faster-rcnn"}]
         config_path = write_multi_model_config(models=models, config_dir=temp_config_dir)
 
         with open(config_path) as f:
@@ -79,15 +79,15 @@ class TestWriteMultiModelConfig:
 
         assert config == {
             "model_config_list": [
-                {"config": {"name": "faster_rcnn", "base_path": "/snap/cv-inference/components/model-faster-rcnn"}}
+                {"config": {"name": "faster_rcnn", "base_path": "/snap/ovms-engine/components/model-faster-rcnn"}}
             ]
         }
 
     def test_writes_multiple_models(self, temp_config_dir):
         """Writes config with multiple model entries."""
         models = [
-            {"name": "faster_rcnn", "base_path": "/snap/cv-inference/components/model-faster-rcnn"},
-            {"name": "efficientnet", "base_path": "/snap/cv-inference/components/model-efficientnet"},
+            {"name": "faster_rcnn", "base_path": "/snap/ovms-engine/components/model-faster-rcnn"},
+            {"name": "efficientnet", "base_path": "/snap/ovms-engine/components/model-efficientnet"},
         ]
         config_path = write_multi_model_config(models=models, config_dir=temp_config_dir)
 
@@ -135,14 +135,14 @@ class TestRegenerateOvmsConfig:
                 "status": "ready",
                 "model_metadata": {
                     "model_name": "faster_rcnn",
-                    "local_path": "/snap/cv-inference/components/model-faster-rcnn",
+                    "local_path": "/snap/ovms-engine/components/model-faster-rcnn",
                 }
             },
             "efficientnet": {
                 "status": "ready",
                 "model_metadata": {
                     "model_name": "efficientnet",
-                    "local_path": "/snap/cv-inference/components/model-efficientnet",
+                    "local_path": "/snap/ovms-engine/components/model-efficientnet",
                 }
             },
         }
@@ -165,7 +165,7 @@ class TestRegenerateOvmsConfig:
                 "status": "ready",
                 "model_metadata": {
                     "model_name": "faster_rcnn",
-                    "local_path": "/snap/cv-inference/components/model-faster-rcnn",
+                    "local_path": "/snap/ovms-engine/components/model-faster-rcnn",
                 }
             },
             "new-model": {
@@ -189,7 +189,7 @@ class TestRegenerateOvmsConfig:
                 "status": "ready",
                 "model_metadata": {
                     "model_name": "faster_rcnn",
-                    "local_path": "/snap/cv-inference/components/model-faster-rcnn",
+                    "local_path": "/snap/ovms-engine/components/model-faster-rcnn",
                 }
             },
             "broken-model": {
@@ -214,7 +214,7 @@ class TestRegenerateOvmsConfig:
                 "status": "ready",
                 "model_metadata": {
                     "model_name": "faster_rcnn",
-                    "local_path": "/snap/cv-inference/components/model-faster-rcnn",
+                    "local_path": "/snap/ovms-engine/components/model-faster-rcnn",
                 }
             },
             "incomplete": {
@@ -249,7 +249,7 @@ class TestRegenerateOvmsConfig:
         """_regenerate_ovms_config is called when _report_model_status sets ready."""
         model_metadata = {
             "model_name": "faster_rcnn",
-            "local_path": "/snap/cv-inference/components/model-faster-rcnn",
+            "local_path": "/snap/ovms-engine/components/model-faster-rcnn",
             "input_name": "input_tensor",
             "output_names": ["detection_boxes"],
             "input_shape": [1, 255, 255, 3],
@@ -266,7 +266,7 @@ class TestRegenerateOvmsConfig:
 
         assert len(config["model_config_list"]) == 1
         assert config["model_config_list"][0]["config"]["name"] == "faster_rcnn"
-        assert config["model_config_list"][0]["config"]["base_path"] == "/snap/cv-inference/components/model-faster-rcnn"
+        assert config["model_config_list"][0]["config"]["base_path"] == "/snap/ovms-engine/components/model-faster-rcnn"
 
     def test_not_triggered_on_installing_status(self, manager, temp_config_dir):
         """_regenerate_ovms_config is NOT called when status is 'installing'."""
@@ -282,7 +282,7 @@ class TestRegenerateOvmsConfig:
                 "status": "ready",
                 "model_metadata": {
                     "model_name": "custom_detector_v2",
-                    "local_path": "/var/snap/cv-inference/common/models/my-custom-model",
+                    "local_path": "/var/snap/ovms-engine/common/models/my-custom-model",
                 }
             },
         }
@@ -294,4 +294,4 @@ class TestRegenerateOvmsConfig:
             config = json.load(f)
 
         assert config["model_config_list"][0]["config"]["name"] == "custom_detector_v2"
-        assert config["model_config_list"][0]["config"]["base_path"] == "/var/snap/cv-inference/common/models/my-custom-model"
+        assert config["model_config_list"][0]["config"]["base_path"] == "/var/snap/ovms-engine/common/models/my-custom-model"

@@ -11,33 +11,33 @@ ComponentDependencies:
     VersionRequirement: '^2.0.0'
 ComponentConfiguration:
   DefaultConfiguration:
-    # Snap component path (read-only, inside cv-inference snap)
-    SnapComponentsPath: "/snap/cv-inference/current/components"
+    # Snap component path (read-only, inside ovms-engine snap)
+    SnapComponentsPath: "/snap/ovms-engine/components/current"
 
     # Content interface mount paths
     # These paths correspond to the Greengrass snap's content plug targets.
     # The aws-iot-greengrass snap must declare content plugs that mount the
-    # cv-inference snap's shared directories into the Greengrass snap's filesystem:
+    # ovms-engine snap's shared directories into the Greengrass snap's filesystem:
     #
     #   plugs:
     #     inference-config:
     #       interface: content
     #       content: inference-config
-    #       target: $SNAP_DATA/cv-inference-config
+    #       target: $SNAP_DATA/ovms-engine-config
     #     inference-models:
     #       interface: content
     #       content: inference-models
-    #       target: $SNAP_DATA/cv-inference-models
+    #       target: $SNAP_DATA/ovms-engine-models
     #
-    # After connection, writes to these paths appear in the cv-inference snap's
+    # After connection, writes to these paths appear in the ovms-engine snap's
     # $SNAP_COMMON/config/ and $SNAP_COMMON/models/ directories respectively.
     # Connect the interfaces with:
-    #   snap connect aws-iot-greengrass:inference-config cv-inference:inference-config
-    #   snap connect aws-iot-greengrass:inference-models cv-inference:inference-models
-    OvmsConfigDir: "/var/snap/aws-iot-greengrass/current/cv-inference-config"
-    SnapCommonPath: "/var/snap/aws-iot-greengrass/current/cv-inference-models"
+    #   snap connect aws-iot-greengrass:inference-config ovms-engine:inference-config
+    #   snap connect aws-iot-greengrass:inference-models ovms-engine:inference-models
+    OvmsConfigDir: "/var/snap/aws-iot-greengrass/current/ovms-engine-config"
+    SnapCommonPath: "/var/snap/aws-iot-greengrass/current/ovms-engine-models"
 
-    # OVMS gRPC endpoint (cv-inference snap exposes on localhost:9000)
+    # OVMS gRPC endpoint (ovms-engine snap exposes on localhost:9000)
     OvmsGrpcUrl: "localhost:9000"
 
     # Health check interval (seconds)
