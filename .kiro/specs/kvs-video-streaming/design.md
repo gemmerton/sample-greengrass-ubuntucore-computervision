@@ -4,7 +4,7 @@
 
 This design adds AWS Kinesis Video Streams (KVS) video transport to the existing Greengrass-based computer vision solution. The feature introduces two primary components:
 
-1. **KVS Producer Greengrass Component** (`com.example.KvsProducer`) — runs on the edge device, subscribes to camera frames and detection results via Greengrass IPC, annotates frames with bounding boxes and labels, encodes them into H.264 video, and streams to a KVS stream in the cloud.
+1. **KVS Producer Greengrass Component** (`com.example.KvsProducer`) — runs on the edge device, owns the camera directly via a GStreamer pipeline, annotates frames with bounding boxes and labels from inference results, encodes them into H.264 video, and streams to a KVS stream in the cloud. It also publishes inference snapshot frames to the `camera/images` topic, taking over the Camera Handler's camera capture role when running.
 
 2. **HLS Video Player** — a React component embedded in the existing dashboard that obtains an HLS streaming session URL from KVS using Cognito credentials and plays the live annotated feed.
 
@@ -14,46 +14,54 @@ Supporting changes include AWS resource provisioning (KVS stream, IAM policies),
 
 | Decision | Rationale |
 |----------|-----------|
-| Custom KVS Producer component (not `aws.iot.EdgeConnectorForKVS` or `aws.kinesisvideo.KvsEdgeComponent`) | The AWS-provided KVS Greengrass components (`aws.iot.EdgeConnectorForKVS` and `aws.kinesisvideo.KvsEdgeComponent`) only support RTSP IP cameras as video sources. Our use case requires programmatic frame injection — we read frames from disk (Camera Handler output), overlay inference annotations, and push the composited frames into the video pipeline via GStreamer `appsrc`. Neither native component supports custom frame sources or pre-encoding annotation. Additionally, `EdgeConnectorForKVS` requires AWS IoT SiteWise/TwinMaker and is limited to specific regions. |
-| Use GStreamer with `kvssink` for H.264 encoding and KVS upload | GStreamer is the recommended pipeline for the KVS Producer SDK on Linux; `kvssink` handles credential refresh, stream creation, and network buffering natively. The KVS Edge Agent itself uses `libgstkvssink` internally. |
-| Frame annotation in Python (OpenCV) before passing to GStreamer | Keeps annotation logic testable in pure Python; OpenCV is already a project dependency in the detection handler |
-| HLS playback (not WebRTC) in the dashboard | HLS is simpler to integrate, works behind corporate firewalls, and the ~5-10 s latency is acceptable for monitoring |
-| Named device shadow (`kvs-config`) for runtime configuration | Follows the existing `model-config` shadow pattern; allows remote tuning without redeployment |
-| Health metrics published to IoT Core topic | Consistent with existing detection result publishing; enables CloudWatch rules and dashboard display |
+| Custom KVS Producer component (not `aws.iot.EdgeConnectorForKVS` or `aws.kinesisvideo.KvsEdgeComponent`) | The AWS-provided KVS Greengrass components only support RTSP IP cameras as video sources. Our use case requires programmatic frame injection with pre-encoding annotation. Additionally, `EdgeConnectorForKVS` requires AWS IoT SiteWise/TwinMaker and is limited to specific regions. |
+| GStreamer `v4l2src` + `tee` for camera capture | GStreamer's `tee` element splits one camera capture feed into two branches — one for KVS H.264 encoding and one for inference snapshots — avoiding the V4L2 single-streamer limitation that prevents two processes opening the same USB device simultaneously. |
+| KVS Producer takes over camera capture from Camera Handler | With GStreamer owning the camera, the Camera Handler would conflict for the device. The KVS Producer publishes inference snapshots to `camera/images` at the same cadence, preserving the Detection Handler interface unchanged. Camera Handler becomes a SOFT dependency. |
+| Frame annotation in Python (OpenCV) before passing to GStreamer | Keeps annotation logic testable in pure Python; OpenCV is already a project dependency in the detection handler. Raw frames are delivered to Python via `appsink`; annotated frames are pushed back into the encoding pipeline via `appsrc`. |
+| Time-window annotation | The KVS Producer captures at 15 fps while inference runs every ~10 seconds. Rather than leaving most frames unannotated, the annotator applies the most recent detection result to all video frames within a configurable staleness window (default 30 seconds). This matches how commercial annotated video systems work and gives a better operator experience. |
+| kvssink internal buffering for network resilience | The KVS Producer SDK's `kvssink` element has built-in network resilience buffering. This replaces a Python-level raw-frame ring buffer, which would require gigabytes of memory for 120 seconds of uncompressed video at 1280×720. |
+| `camera/detections` subscribed via IoT Core MQTT | The Detection Handler publishes to `camera/detections` via `PublishToIoTCore`. The KVS Producer must subscribe via `SubscribeToIoTCore`, not local pub/sub. |
+| HLS playback (not WebRTC) in the dashboard | HLS is simpler to integrate, works behind corporate firewalls, and the latency (10–30 seconds) is acceptable for monitoring. |
+| Named device shadow (`kvs-config`) for runtime configuration | Follows the existing `model-config` shadow pattern; allows remote tuning without redeployment. |
+| Health metrics published to IoT Core topic | Consistent with existing detection result publishing; enables CloudWatch rules and dashboard display. |
+| TES credentials via AWS credential provider chain | Greengrass automatically sets `AWS_CONTAINER_CREDENTIALS_RELATIVE_URI` for components that declare `aws.greengrass.TokenExchangeService` as a dependency. The AWS SDK credential chain picks this up, so `kvssink` inherits automatic credential refresh with no explicit refresh thread required. |
 
 ## Architecture
 
 ```mermaid
 flowchart LR
     subgraph Edge Device
-        CAM[Camera Handler] -->|camera/images| KVS[KVS Producer]
-        DET[Detection Handler] -->|camera/detections| KVS
-        KVS -->|H.264 stream| GSTREAMER[GStreamer kvssink]
+        CAM[v4l2src\ncamera capture] --> TEE[tee]
+        TEE -->|raw frames\nappsink| PY[Python Annotator\nThread]
+        TEE -->|snapshot\nappsink| SNAP[Inference Frame\nSaver]
+        PY -->|annotated frames\nappsrc| ENC[x264enc → kvssink]
+        SNAP -->|image_path| PUBSUB[camera/images\nlocal pub/sub]
+        DET[Detection Handler] -->|camera/detections\nIoT Core MQTT| PY
+        SHADOW[IoT Shadow\nkvs-config] <-->|IPC| PY
+        PY -->|publish| MQTT_OUT[camera/kvs-status\nIoT Core]
     end
 
     subgraph AWS Cloud
-        GSTREAMER -->|PutMedia| KVSSTREAM[(KVS Stream)]
-        KVSSTREAM -->|GetHLSStreamingSessionURL| HLS[HLS Endpoint]
-        SHADOW[IoT Device Shadow\nkvs-config] <-->|IPC| KVS
-        MQTT[IoT Core\ncamera/kvs-status] <-->|IPC| KVS
+        ENC -->|PutMedia| KVSSTREAM[(KVS Stream)]
+        KVSSTREAM --> HLS[HLS Endpoint]
     end
 
     subgraph React Dashboard
         HLS --> PLAYER[HLS Player Component]
-        MQTT --> STATUS[Stream Status Display]
+        MQTT_OUT --> STATUS[Stream Status Display]
     end
 ```
 
 ### Data Flow
 
-1. **Camera Handler** captures frames and publishes the image path to `camera/images` (local IPC).
-2. **Detection Handler** performs inference and publishes results to `camera/detections` (IoT Core MQTT).
-3. **KVS Producer** subscribes to both topics. For each new frame:
-   - Reads the image from disk.
-   - If a recent detection result is available for that frame, the **Frame Annotator** draws bounding boxes and labels onto the frame.
-   - The annotated (or raw) frame is pushed into a GStreamer `appsrc` element.
-4. **GStreamer pipeline** encodes frames to H.264 and the `kvssink` element streams to the KVS stream via `PutMedia`.
-5. **Dashboard** obtains an HLS session URL using Cognito credentials and plays the stream in an HTML5 video element via `hls.js`.
+1. **KVS Producer** starts the `CapturePipeline`, opening `/dev/video0` via `v4l2src` at the configured frame rate and resolution.
+2. The `tee`'s **raw frame branch** delivers frames at full frame rate to the Python annotator thread via `appsink`.
+3. The `tee`'s **snapshot branch** fires every `snapshot_interval_seconds` (default 10s): Python saves the JPEG to disk and publishes `{"image_path": ..., "timestamp": ...}` to `camera/images` via local pub/sub, preserving the existing Detection Handler interface unchanged.
+4. **Detection Handler** receives `camera/images`, runs inference, and publishes results to `camera/detections` via **IoT Core MQTT**.
+5. **KVS Producer** receives `camera/detections` via `SubscribeToIoTCore`. `FrameAnnotator.update_detections()` stores the result with a `received_at` timestamp.
+6. For each raw frame from step 2, `FrameAnnotator.annotate()` draws the stored detection boxes if they are within the staleness window; otherwise returns the raw frame unchanged.
+7. The annotated frame is pushed into the `EncodingPipeline`'s `appsrc`. GStreamer encodes to H.264 and `kvssink` streams to KVS via `PutMedia`. **`kvssink`'s internal buffer handles up to 120 seconds of network outage natively.**
+8. **Dashboard** calls `GetHLSStreamingSessionURL` with `PlaybackMode: LIVE` and `ContainerFormat: FRAGMENTED_MP4`, then plays the stream via `hls.js`.
 
 ## Components and Interfaces
 
@@ -65,72 +73,111 @@ flowchart LR
 | Module | Responsibility |
 |--------|---------------|
 | `kvs_producer.py` | Main entry point; orchestrates frame pipeline, shadow config, health reporting |
-| `frame_annotator.py` | Draws bounding boxes and labels onto frames using OpenCV |
-| `gstreamer_pipeline.py` | Manages GStreamer pipeline lifecycle (appsrc → x264enc → kvssink) |
+| `frame_annotator.py` | Draws bounding boxes and labels onto frames using OpenCV; applies time-window logic |
+| `gstreamer_pipeline.py` | Manages `CapturePipeline` and `EncodingPipeline` lifecycle |
 | `shadow_config.py` | Reads/writes the `kvs-config` named device shadow |
 | `health_monitor.py` | Tracks metrics and publishes to `camera/kvs-status` |
 
 **Greengrass Recipe Dependencies:**
-- `com.example.CameraHandlerCore` (HARD)
-- `com.example.DetectionHandler` (SOFT)
-- `aws.greengrass.ShadowManager` (HARD)
-- `aws.greengrass.TokenExchangeService` (HARD)
+
+| Dependency | Type |
+|------------|------|
+| `com.example.CameraHandlerCore` | SOFT — KVS Producer takes over camera capture when running |
+| `com.example.DetectionHandler` | SOFT |
+| `aws.greengrass.ShadowManager` | HARD |
+| `aws.greengrass.TokenExchangeService` | HARD |
 
 **IPC Access Control:**
-- Subscribe to `camera/images` (local pub/sub)
-- Subscribe to `camera/detections` (local pub/sub)
-- Get/Update shadow `kvs-config`
-- Publish to IoT Core `camera/kvs-status`
+
+| Access | Type |
+|--------|------|
+| Publish to `camera/images` | local pub/sub |
+| Subscribe to `camera/detections` | **IoT Core MQTT** (`SubscribeToIoTCore`) |
+| Get/Update shadow `kvs-config` | shadow IPC |
+| Publish to IoT Core `camera/kvs-status` | IoT Core |
 
 ### 2. Frame Annotator Module
 
 ```python
+@dataclass
+class DetectionBox:
+    ymin: float
+    xmin: float
+    ymax: float
+    xmax: float
+
+@dataclass
+class Detection:
+    label: str
+    score: float    # 0.0 – 1.0
+    box: DetectionBox
+
 class FrameAnnotator:
-    """Draws detection results onto camera frames."""
+    """Draws detection results onto camera frames using a time-window model."""
 
-    def __init__(self, num_classes: int = 10):
-        """Initialize with a colour palette for up to num_classes."""
+    def __init__(self, staleness_window_seconds: float = 30.0, num_classes: int = 10):
+        """Initialize with staleness window and a colour palette for up to num_classes."""
 
-    def annotate(self, frame: np.ndarray, detections: list[Detection]) -> np.ndarray:
-        """Draw bounding boxes and labels on frame. Returns annotated copy."""
+    def update_detections(self, detections: list[Detection], received_at: float) -> None:
+        """Called when a new camera/detections message arrives. Stores detections
+        and received_at timestamp for use by annotate()."""
+
+    def annotate(self, frame: np.ndarray, frame_time: float) -> np.ndarray:
+        """Annotate frame with current detections if received_at is within
+        staleness_window_seconds of frame_time. Returns a copy pixel-identical
+        to the input if no valid detections are available. The input frame is
+        never modified in place."""
 
     def get_colour(self, class_label: str) -> tuple[int, int, int]:
         """Return consistent BGR colour for a given class label."""
 ```
 
-**Detection data structure** (received from `camera/detections`):
-```python
-@dataclass
-class Detection:
-    label: str
-    score: float  # 0.0 - 1.0
-    xmin: float   # pixel coordinate
-    ymin: float
-    xmax: float
-    ymax: float
-```
-
-### 3. GStreamer Pipeline Module
+### 3. GStreamer Pipeline Modules
 
 ```python
-class GStreamerPipeline:
-    """Manages the GStreamer encoding and KVS upload pipeline."""
+class CapturePipeline:
+    """v4l2src → tee → appsink (raw frames) + appsink (inference snapshots).
 
-    def __init__(self, stream_name: str, region: str, framerate: int, width: int, height: int):
-        """Build pipeline: appsrc ! videoconvert ! x264enc ! kvssink."""
+    Pipeline string:
+      v4l2src device={device} ! video/x-raw,width={w},height={h},framerate={fps}/1
+      ! tee name=t
+      t. ! queue ! videoconvert ! video/x-raw,format=BGR ! appsink name=raw_sink emit-signals=true
+      t. ! queue ! videorate ! image/jpeg,framerate=1/{snapshot_interval} ! jpegenc
+         ! appsink name=snapshot_sink emit-signals=true
+    """
+
+    def __init__(self, device: str, framerate: int, width: int, height: int,
+                 snapshot_interval_seconds: int):
+
+    def set_on_raw_frame(self, callback: Callable[[np.ndarray, float], None]) -> None:
+        """Register callback invoked for every raw frame: (frame_bgr, capture_timestamp)."""
+
+    def set_on_snapshot(self, callback: Callable[[bytes], None]) -> None:
+        """Register callback invoked at snapshot cadence: (jpeg_bytes,)."""
+
+    def start(self) -> None
+    def stop(self) -> None
+    def is_healthy(self) -> bool
+
+
+class EncodingPipeline:
+    """appsrc → videoconvert → x264enc → h264parse → kvssink.
+
+    kvssink reads AWS credentials automatically via the AWS SDK credential
+    provider chain. Greengrass sets AWS_CONTAINER_CREDENTIALS_RELATIVE_URI
+    for components that declare aws.greengrass.TokenExchangeService, so
+    credential refresh requires no additional code.
+    """
+
+    def __init__(self, stream_name: str, region: str, framerate: int,
+                 width: int, height: int):
 
     def push_frame(self, frame: np.ndarray) -> bool:
-        """Push a BGR frame into the pipeline. Returns False if pipeline is in error state."""
+        """Push a BGR frame. Returns False if pipeline is not in PLAYING state."""
 
-    def start(self) -> None:
-        """Set pipeline to PLAYING state."""
-
-    def stop(self) -> None:
-        """Set pipeline to NULL state and release resources."""
-
-    def is_healthy(self) -> bool:
-        """Return True if pipeline is in PLAYING or PAUSED state."""
-
+    def start(self) -> None
+    def stop(self) -> None
+    def is_healthy(self) -> bool
     def reconfigure(self, framerate: int, width: int, height: int) -> None:
         """Restart pipeline with new parameters."""
 ```
@@ -141,18 +188,26 @@ class GStreamerPipeline:
 @dataclass
 class KvsConfig:
     stream_name: str
-    frame_rate: int        # 1-30 fps
-    resolution: str        # "640x480" | "1280x720" | "1920x1080"
+    frame_rate: int                   # 1–30 fps
+    resolution: str                   # "640x480" | "1280x720" | "1920x1080"
     streaming_enabled: bool
+    staleness_window_seconds: float   # seconds; detections older than this are not applied
+    snapshot_interval_seconds: int    # cadence at which inference snapshots are saved (1–3600)
 
 VALID_RESOLUTIONS = {"640x480", "1280x720", "1920x1080"}
 DEFAULT_CONFIG = KvsConfig(
-    stream_name="",       # Falls back to recipe configuration
+    stream_name="",                   # Falls back to recipe configuration
     frame_rate=15,
-    resolution="1280x720",
+    resolution="640x480",             # Matches Camera Handler default capture resolution
     streaming_enabled=True,
+    staleness_window_seconds=30.0,
+    snapshot_interval_seconds=10,
 )
+```
 
+> **Resolution note:** The `resolution` field must match the Camera Handler's configured capture resolution to avoid unnecessary scaling. The default `640x480` matches the Camera Handler's default. If the Camera Handler is reconfigured to a higher resolution, update `resolution` in the shadow accordingly.
+
+```python
 class ShadowConfigManager:
     """Manages KVS configuration via the kvs-config device shadow."""
 
@@ -197,12 +252,20 @@ interface KvsPlayerProps {
 
 const KvsPlayer: React.FC<KvsPlayerProps> = ({ streamName, region }) => {
   // Uses useAuth() hook for Cognito credentials
-  // Calls KVS GetHLSStreamingSessionURL API
+  // Calls KVS GetHLSStreamingSessionURL with parameters:
+  //   PlaybackMode: "LIVE"
+  //   HLSFragmentSelector: { FragmentSelectorType: "SERVER_TIMESTAMP" }
+  //   ContainerFormat: "FRAGMENTED_MP4"
+  //   DiscontinuityMode: "ALWAYS"
+  //   DisplayFragmentTimestamp: "ALWAYS"
+  //   Expires: 3600
   // Renders <video> element with hls.js
   // Displays connection status overlay
   // Handles credential refresh on expiry
 };
 ```
+
+**Expected latency:** 10–30 seconds end-to-end with `FRAGMENTED_MP4` + `LIVE` mode, depending on kvssink fragment duration and hls.js buffer configuration. This latency is acceptable for remote monitoring.
 
 ### 7. Setup Script Extension
 
@@ -210,6 +273,51 @@ The existing `setup_aws_resources.py` is extended with:
 - `create_kvs_stream(stream_name, retention_hours=24)` — creates the KVS stream
 - `attach_kvs_producer_policy(role_name, stream_arn)` — grants PutMedia, CreateStream, DescribeStream, GetDataEndpoint
 - `attach_kvs_viewer_policy(role_name, stream_arn)` — grants GetHLSStreamingSessionURL, GetDataEndpoint, DescribeStream
+
+### 8. Snap Deployment on Ubuntu Core
+
+Ubuntu Core is an immutable snap-based OS. The KVS Producer SDK's GStreamer plugin (`libgstkvssink.so`) must be compiled from source during the Greengrass component's `Install` lifecycle step.
+
+**Install lifecycle steps:**
+1. Install build dependencies via `apt-get` (available on Ubuntu Core 22+ via the base snap): `cmake`, `g++`, `libssl-dev`, `libcurl4-openssl-dev`, `libgstreamer1.0-dev`, `gstreamer1.0-plugins-base`, `gstreamer1.0-plugins-good`, `gstreamer1.0-plugins-bad`, `python3-gi`, `gir1.2-gstreamer-1.0`
+2. Clone and compile `amazon-kinesis-video-streams-producer-sdk-cpp` with `-DBUILD_GSTREAMER_PLUGIN=ON`
+3. Set `GST_PLUGIN_PATH` in the `Run` lifecycle to the build output directory so GStreamer discovers `libgstkvssink.so`
+
+**Recipe lifecycle sketch:**
+
+```yaml
+ComponentConfiguration:
+  DefaultConfiguration:
+    KvsProducerSdkBuildDir: "{work:path}/kvs-producer-sdk-build"
+    Region: "us-east-1"
+
+Lifecycle:
+  Install:
+    Script: |
+      apt-get install -y cmake g++ libssl-dev libcurl4-openssl-dev \
+        libgstreamer1.0-dev gstreamer1.0-plugins-base \
+        gstreamer1.0-plugins-good gstreamer1.0-plugins-bad \
+        python3-gi gir1.2-gstreamer-1.0
+      git clone --depth 1 \
+        https://github.com/awslabs/amazon-kinesis-video-streams-producer-sdk-cpp \
+        {configuration:/KvsProducerSdkBuildDir}/src
+      cmake -S {configuration:/KvsProducerSdkBuildDir}/src \
+            -B {configuration:/KvsProducerSdkBuildDir}/build \
+            -DBUILD_GSTREAMER_PLUGIN=ON
+      cmake --build {configuration:/KvsProducerSdkBuildDir}/build --parallel 4
+  Run:
+    Script: |
+      export GST_PLUGIN_PATH={configuration:/KvsProducerSdkBuildDir}/build
+      export AWS_DEFAULT_REGION={configuration:/Region}
+      python3 {artifacts:path}/kvs_producer.py
+```
+
+> **Build time:** Compiling the KVS Producer SDK takes 5–15 minutes on typical edge hardware. This cost is paid once per deployment.
+
+**Camera device access:** The Greengrass snap requires the `camera` snap interface to access `/dev/video0`. Connect it once after snap installation:
+```
+snap connect aws-iot-greengrass:camera
+```
 
 ## Data Models
 
@@ -221,14 +329,18 @@ The existing `setup_aws_resources.py` is extended with:
     "desired": {
       "stream_name": "ubuntu-core-gg-demo-stream",
       "frame_rate": 15,
-      "resolution": "1280x720",
-      "streaming_enabled": true
+      "resolution": "640x480",
+      "streaming_enabled": true,
+      "staleness_window_seconds": 30.0,
+      "snapshot_interval_seconds": 10
     },
     "reported": {
       "stream_name": "ubuntu-core-gg-demo-stream",
       "frame_rate": 15,
-      "resolution": "1280x720",
+      "resolution": "640x480",
       "streaming_enabled": true,
+      "staleness_window_seconds": 30.0,
+      "snapshot_interval_seconds": 10,
       "streaming_status": "streaming"
     }
   }
@@ -239,7 +351,11 @@ The existing `setup_aws_resources.py` is extended with:
 - `frame_rate`: integer, 1 ≤ value ≤ 30
 - `resolution`: one of `"640x480"`, `"1280x720"`, `"1920x1080"`
 - `streaming_enabled`: boolean
+- `staleness_window_seconds`: float > 0
+- `snapshot_interval_seconds`: integer, 1 ≤ value ≤ 3600
 - `streaming_status` (reported only): one of `"streaming"`, `"stopped"`, `"error"`
+
+> **Status field note:** `streaming_status` in the shadow (`streaming`, `stopped`, `error`) reflects the operator-controlled streaming state and intentionally omits transient states. `connection_status` in health metrics (`streaming`, `buffering`, `offline`, `error`) reflects real-time transport state observed by the health monitor. These are distinct fields with different purposes and different value sets.
 
 ### Stream Health Message (`camera/kvs-status`)
 
@@ -271,29 +387,21 @@ The existing `setup_aws_resources.py` is extended with:
 }
 ```
 
-### Frame Buffer (Internal)
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `frames` | `deque[tuple[np.ndarray, float]]` | Ring buffer of (frame, timestamp) pairs |
-| `max_duration_seconds` | `float` | 120 seconds max buffer |
-| `max_frames` | `int` | Computed from frame_rate × max_duration_seconds |
-
-When the buffer is full and network is unavailable, the oldest frame is dropped (FIFO eviction).
+Bounding box coordinates are pixel values in a nested `box` object. The `Detection` dataclass maps to this structure via `DetectionBox`. The KVS Producer subscribes to this topic via `SubscribeToIoTCore`.
 
 ## Correctness Properties
 
-*A property is a characteristic or behavior that should hold true across all valid executions of a system — essentially, a formal statement about what the system should do. Properties serve as the bridge between human-readable specifications and machine-verifiable correctness guarantees.*
+*A property is a characteristic or behavior that should hold true across all valid executions of a system.*
 
-### Property 1: Frame buffer capacity and FIFO eviction
+### Property 1: Time-window annotation
 
-*For any* sequence of frames pushed into the frame buffer at any frame rate between 1 and 30 fps, the buffer SHALL never contain more than 120 seconds of video content, AND when the buffer is at capacity and a new frame is inserted, the oldest frame (by timestamp) SHALL be the one evicted.
+*For any* video frame where the most recent detection result's `received_at` timestamp is more than `staleness_window_seconds` before the frame's `frame_time`, `annotate()` SHALL return a copy pixel-identical to the input frame. *For any* frame where the most recent detection result's `received_at` is within `staleness_window_seconds` of `frame_time`, `annotate()` SHALL draw bounding boxes for all detections in that result.
 
-**Validates: Requirements 1.4, 1.5**
+**Validates: Requirements 2.3, 2.6**
 
 ### Property 2: Bounding boxes drawn at specified pixel coordinates
 
-*For any* valid frame (non-empty numpy array with 3 colour channels) and any list of detections with pixel coordinates within the frame dimensions, calling `annotate(frame, detections)` SHALL modify pixels along the bounding box edges defined by (xmin, ymin, xmax, ymax) for each detection, such that the annotated frame differs from the original at those boundary pixels.
+*For any* valid frame (non-empty numpy array with 3 colour channels) and any list of detections with pixel coordinates within the frame dimensions, calling `annotate()` SHALL modify pixels along the bounding box edges defined by `(box.xmin, box.ymin, box.xmax, box.ymax)` for each detection, such that the annotated frame differs from the original at those boundary pixels.
 
 **Validates: Requirements 2.1**
 
@@ -305,7 +413,7 @@ When the buffer is full and network is unavailable, the oldest frame is dropped 
 
 ### Property 4: Empty detections preserve frame identity
 
-*For any* valid frame (non-empty numpy array with 3 colour channels), calling `annotate(frame, [])` with an empty detections list SHALL return a frame that is pixel-identical to the input frame.
+*For any* valid frame (non-empty numpy array with 3 colour channels), calling `annotate()` when no detections are within the staleness window SHALL return **a copy** pixel-identical to the input frame. The input frame SHALL NOT be modified in place.
 
 **Validates: Requirements 2.3**
 
@@ -317,13 +425,13 @@ When the buffer is full and network is unavailable, the oldest frame is dropped 
 
 ### Property 6: Stale detection discard
 
-*For any* detection result whose timestamp is less than or equal to the timestamp of the most recently forwarded frame, the Frame Annotator SHALL discard that detection (not apply it to any frame).
+*For any* `(frame_time, received_at, staleness_window_seconds)` triple where `frame_time - received_at > staleness_window_seconds`, `annotate()` SHALL NOT apply that detection result to the frame.
 
 **Validates: Requirements 2.6**
 
 ### Property 7: Configuration validation
 
-*For any* shadow payload, if `frame_rate` is an integer in [1, 30] AND `resolution` is one of {"640x480", "1280x720", "1920x1080"} AND `streaming_enabled` is a boolean, then `apply_delta` SHALL produce a valid `KvsConfig` matching those values. Conversely, *for any* shadow payload where `frame_rate` is outside [1, 30] OR `resolution` is not in the valid set, `apply_delta` SHALL reject the invalid values, retain the previous valid configuration unchanged, and include a non-empty rejection reason.
+*For any* shadow payload, if `frame_rate` is an integer in [1, 30] AND `resolution` is one of {"640x480", "1280x720", "1920x1080"} AND `streaming_enabled` is a boolean AND `staleness_window_seconds` is a float > 0 AND `snapshot_interval_seconds` is an integer in [1, 3600], then `apply_delta` SHALL produce a valid `KvsConfig` matching those values. Conversely, *for any* shadow payload where any of these conditions is violated, `apply_delta` SHALL reject the invalid values, retain the previous valid configuration unchanged, and include a non-empty rejection reason.
 
 **Validates: Requirements 6.1, 6.5**
 
@@ -333,15 +441,16 @@ When the buffer is full and network is unavailable, the oldest frame is dropped 
 
 | Error Condition | Handling Strategy | Recovery |
 |----------------|-------------------|----------|
-| Network loss (< 120s) | Buffer frames locally in ring buffer | Auto-resume when connectivity restored; frames sent in order |
-| Network loss (> 120s) | Buffer full, evict oldest frames | Continue buffering newest frames; resume when connected |
-| Network unreachable > 300s | Unrecoverable error | Publish error to `camera/kvs-status`, attempt 3 restarts at 30s intervals |
+| Network loss (≤ 120s) | `kvssink` buffers encoded frames internally | Auto-resumes in transmission order when connectivity restored |
+| Network loss (> 120s) | `kvssink` buffer full, oldest encoded frames dropped | Continues buffering newest frames; resumes when connected |
+| Network unreachable > 300s | `kvssink` signals pipeline error via GStreamer bus message | Python catches bus error, publishes error to `camera/kvs-status`, attempts 3 restarts at 30s intervals |
 | KVS stream deleted | Unrecoverable error | Publish error, attempt restart (which will recreate stream) |
-| Invalid credentials | Unrecoverable error | Publish error, attempt restart (Token Exchange Service refreshes credentials) |
-| GStreamer pipeline error | Pipeline crash | Log error, restart pipeline with current configuration |
+| Invalid credentials | Unrecoverable error | Publish error, attempt restart (Token Exchange Service refreshes credentials via provider chain) |
+| GStreamer pipeline error | Pipeline crash | Log error, restart both `CapturePipeline` and `EncodingPipeline` with current configuration |
 | Shadow unavailable on startup | Degraded start | Use default config, retry shadow read every 30s |
 | Invalid shadow config values | Reject invalid values | Retain previous valid config, report rejection in shadow reported state |
-| Camera/Detection dependency not running | Startup delay | Wait 30s, then retry every 10s with error logging |
+| Camera device unavailable on startup | Startup delay | Wait 30s, then retry every 10s with error logging |
+| Detection Handler not running | Normal operation | Frames stream unannotated; annotator applies detections when they resume arriving |
 | All 3 restart attempts exhausted | Terminal error state | Publish final error message, remain in error state until manual restart or redeployment |
 
 ### Dashboard Error Scenarios
@@ -366,25 +475,32 @@ When the buffer is full and network is unavailable, the oldest frame is dropped 
 
 ### Unit Tests (Example-Based)
 
-Unit tests cover specific scenarios, edge cases, and integration points:
-
 **KVS Producer (Python — pytest):**
-- Recipe validation: verify component dependencies are declared correctly
+- Recipe validation: verify component dependencies are declared correctly, including CameraHandlerCore as SOFT
 - Shadow config: test default values when shadow is unavailable
 - Shadow config: test streaming enable/disable state transitions
+- Shadow config: test rejection of invalid `staleness_window_seconds` (≤ 0) and `snapshot_interval_seconds` (out of range)
 - Health monitor: verify metrics message structure matches schema
 - Health monitor: verify error status published after 60s transmission failure
 - Restart logic: verify 3 attempts at 30-second intervals, then terminal error state
-- Dependency wait: verify 30s initial wait, then 10s retry intervals
+
+**CapturePipeline (Python — pytest with GStreamer test pipeline):**
+- Verify `on_raw_frame` callback fires at configured frame rate
+- Verify `on_snapshot` callback fires at `snapshot_interval_seconds` cadence
+- Verify snapshot JPEG is saved to disk and `camera/images` published with correct `image_path`
 
 **Frame Annotator (Python — pytest):**
+- Frames within staleness window are annotated with stored detection boxes
+- Frames outside staleness window are returned as pixel-identical copies, input unmodified
 - Performance benchmark: annotation completes within 50ms for typical frame sizes
 - Annotation with multiple overlapping detections
+- `update_detections` with empty list clears annotations
 
 **Dashboard (TypeScript — vitest):**
 - KvsPlayer renders video element
 - KvsPlayer displays "offline" status when stream has no data
 - KvsPlayer retries GetHLSStreamingSessionURL 3 times on failure
+- KvsPlayer passes correct parameters to GetHLSStreamingSessionURL (PlaybackMode, ContainerFormat, etc.)
 - KvsPlayer refreshes credentials on expiry without page reload
 - Dashboard layout shows both HLS player and S3 gallery simultaneously
 - Stream status indicator updates from MQTT messages
@@ -397,27 +513,24 @@ Unit tests cover specific scenarios, edge cases, and integration points:
 
 ### Property-Based Tests (Python — Hypothesis)
 
-Property-based tests verify universal correctness properties across generated inputs. Each test runs a minimum of 100 iterations.
+Each test runs a minimum of 100 iterations (`@settings(max_examples=100)`).
 
 | Property | Test Description | Generator Strategy |
 |----------|-----------------|-------------------|
-| Property 1 | Buffer capacity and FIFO eviction | Random frame sequences with varying timestamps and frame rates (1-30 fps) |
-| Property 2 | Bounding boxes at correct coordinates | Random frame dimensions (100-1920 × 100-1080), random detection coordinates within bounds |
+| Property 1 | Time-window annotation | Random `(frame_time, received_at, staleness_window_seconds)` triples; verify annotation applied iff `frame_time - received_at ≤ staleness_window_seconds` |
+| Property 2 | Bounding boxes at correct coordinates | Random frame dimensions (100–1920 × 100–1080), random `DetectionBox` coordinates within bounds |
 | Property 3 | Confidence score formatting | Random floats in [0.0, 1.0] |
-| Property 4 | Empty detections preserve frame | Random numpy arrays (various dimensions, 3 channels) |
+| Property 4 | Empty detections preserve frame | Random numpy arrays (various dimensions, 3 channels); verify copy returned, input unchanged |
 | Property 5 | Colour assignment consistency | Random Unicode strings as class labels |
-| Property 6 | Stale detection discard | Random timestamp sequences for frames and detections |
-| Property 7 | Configuration validation | Random integers (including out-of-range), random strings (including valid/invalid resolutions), random booleans |
+| Property 6 | Stale detection discard | Random `(frame_time, received_at, staleness_window)` triples where `frame_time - received_at > staleness_window`; verify no annotation |
+| Property 7 | Configuration validation | Random integers (including out-of-range for `frame_rate`, `snapshot_interval_seconds`), random strings (valid/invalid resolutions), random booleans, random floats (including ≤ 0 for `staleness_window_seconds`) |
 
-**Test Configuration:**
-- Library: [Hypothesis](https://hypothesis.readthedocs.io/) for Python property tests
-- Minimum iterations: 100 per property (`@settings(max_examples=100)`)
-- Each test tagged with: `# Feature: kvs-video-streaming, Property {N}: {description}`
+**Test tag convention:** Each test tagged with `# Feature: kvs-video-streaming, Property {N}: {description}`
 
 ### Integration Tests
 
-- End-to-end: KVS Producer encodes frames and streams to a test KVS stream
-- Network resilience: simulate network loss, verify buffering and resume
-- Shadow integration: update shadow, verify producer applies new config
+- End-to-end: KVS Producer captures from camera, encodes frames, and streams to a test KVS stream
+- Network resilience: simulate network loss, verify kvssink buffers and resumes
+- Snapshot publishing: verify inference snapshots are saved and published to `camera/images` at configured cadence
+- Shadow integration: update shadow, verify producer applies new config within 5 seconds
 - Dashboard playback: verify HLS session URL retrieval with valid Cognito credentials
-
