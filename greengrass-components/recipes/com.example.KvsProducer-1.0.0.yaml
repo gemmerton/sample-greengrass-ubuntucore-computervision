@@ -1,0 +1,103 @@
+---
+RecipeFormatVersion: '2020-01-25'
+ComponentName: com.example.KvsProducer
+ComponentVersion: '1.0.0'
+ComponentDescription: >
+  Streams annotated live video from the edge device to AWS Kinesis Video Streams.
+  Owns the camera via GStreamer, overlays inference bounding boxes using a
+  time-window model, and publishes inference snapshots to camera/images.
+ComponentPublisher: AWS
+ComponentDependencies:
+  com.example.CameraHandlerCore:
+    VersionRequirement: '^1.0.0'
+    DependencyType: SOFT
+  com.example.DetectionHandler:
+    VersionRequirement: '^1.0.0'
+    DependencyType: SOFT
+  aws.greengrass.ShadowManager:
+    VersionRequirement: '^2.0.0'
+    DependencyType: HARD
+  aws.greengrass.TokenExchangeService:
+    VersionRequirement: '^2.0.0'
+    DependencyType: HARD
+ComponentConfiguration:
+  DefaultConfiguration:
+    KvsStreamName: "ubuntu-core-gg-demo-stream"
+    Region: "us-east-1"
+    CameraDevice: "/dev/video0"
+    KvsProducerSdkBuildDir: "{work:path}/kvs-producer-sdk-build"
+    accessControl:
+      aws.greengrass.ShadowManager:
+        com.example.KvsProducer:shadow:1:
+          policyDescription: 'Read and write the kvs-config named shadow'
+          operations:
+            - 'aws.greengrass#GetThingShadow'
+            - 'aws.greengrass#UpdateThingShadow'
+          resources:
+            - '$aws/things/*/shadow/name/kvs-config'
+      aws.greengrass.ipc.pubsub:
+        com.example.KvsProducer:pubsub:1:
+          policyDescription: 'Publish inference snapshot paths to camera/images'
+          operations:
+            - 'aws.greengrass#PublishToTopic'
+          resources:
+            - 'camera/images'
+      aws.greengrass.ipc.mqttproxy:
+        com.example.KvsProducer:mqttproxy:1:
+          policyDescription: 'Subscribe to detection results and shadow delta; publish health metrics'
+          operations:
+            - 'aws.greengrass#SubscribeToIoTCore'
+            - 'aws.greengrass#PublishToIoTCore'
+          resources:
+            - 'camera/detections'
+            - 'camera/kvs-status'
+            - '$aws/things/*/shadow/name/kvs-config/update/delta'
+Manifests:
+  - Platform:
+      os: linux
+    Lifecycle:
+      Install:
+        Timeout: 900
+        Script: |
+          set -e
+          apt-get install -y cmake g++ libssl-dev libcurl4-openssl-dev \
+            libgstreamer1.0-dev gstreamer1.0-plugins-base \
+            gstreamer1.0-plugins-good gstreamer1.0-plugins-bad \
+            python3-gi gir1.2-gstreamer-1.0
+          git clone --depth 1 \
+            https://github.com/awslabs/amazon-kinesis-video-streams-producer-sdk-cpp \
+            {configuration:/KvsProducerSdkBuildDir}/src
+          cmake -S {configuration:/KvsProducerSdkBuildDir}/src \
+                -B {configuration:/KvsProducerSdkBuildDir}/build \
+                -DBUILD_GSTREAMER_PLUGIN=ON
+          cmake --build {configuration:/KvsProducerSdkBuildDir}/build --parallel 4
+          python3 -m venv --without-pip venv/
+          . venv/bin/activate
+          python3 {artifacts:path}/get-pip.py
+          python3 -m pip install -r {artifacts:path}/requirements.txt
+          deactivate
+      Run:
+        Script: |
+          set -e
+          export GST_PLUGIN_PATH={configuration:/KvsProducerSdkBuildDir}/build
+          export AWS_DEFAULT_REGION="{configuration:/Region}"
+          export KVS_STREAM_NAME="{configuration:/KvsStreamName}"
+          export CAMERA_DEVICE="{configuration:/CameraDevice}"
+          export AWS_IOT_THING_NAME="{iot:thingName}"
+          . venv/bin/activate
+          python3 {artifacts:path}/kvs_producer.py
+    Artifacts:
+      - Uri: kvs_producer.py
+        Unarchive: NONE
+      - Uri: frame_annotator.py
+        Unarchive: NONE
+      - Uri: gstreamer_pipeline.py
+        Unarchive: NONE
+      - Uri: shadow_config.py
+        Unarchive: NONE
+      - Uri: health_monitor.py
+        Unarchive: NONE
+      - Uri: requirements.txt
+        Unarchive: NONE
+      - Uri: get-pip.py
+        Unarchive: NONE
