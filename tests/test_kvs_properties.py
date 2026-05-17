@@ -25,13 +25,13 @@ def test_property1_time_window_annotation(staleness, delta):
     a.update_detections([det], received_at=received_at)
     f = np.zeros((100, 100, 3), dtype=np.uint8)
     result = a.annotate(f, frame_time=frame_time)
-    if delta > staleness:
+    if frame_time - received_at > staleness:
         # Stale — must be pixel-identical copy
         assert np.array_equal(result, f), f"delta={delta} > staleness={staleness}: expected no annotation"
     else:
-        # Fresh — must differ (bounding box drawn on a non-zero region)
-        # We can only assert the input is not modified
-        assert result is not f
+        # Fresh — annotation must have drawn pixels on the black frame
+        assert not np.array_equal(result, f), \
+            f"delta={delta} <= staleness={staleness}: expected annotation but frame is unchanged"
 
 # ── Property 3: Confidence score formatting ───────────────────────────────────
 @settings(max_examples=100)
