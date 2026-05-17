@@ -1,3 +1,13 @@
+# Snap packages and build artifacts
+*.snap
+*.comp
+stage/
+prime/
+.snapcraft/
+# OVMS: pre-extracted binary and libraries (extracted from Docker before snap build)
+ovms-engine/ovms
+ovms-engine/lib/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]

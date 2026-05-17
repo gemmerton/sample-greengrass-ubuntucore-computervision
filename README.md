@@ -270,6 +270,10 @@ Without `--force`, the script:
   python3 setup_aws_resources.py --s3-bucket your-bucket-name --region us-east-1
   ```
 
+## Building the Snaps
+
+Two snaps (`kvs-gstreamer` and `ovms-engine`) must be built and installed on the Ubuntu Core device before deploying Greengrass components. See **[docs/building-snaps.md](docs/building-snaps.md)** for full build instructions, including the Docker extraction step required for the OVMS snap.
+
 ## React Dashboard
 
 The React dashboard is located in the `react-web/` directory. After running the setup stage, the `.env` file will be automatically created with the correct AWS configuration. See `react-web/README.md` for details on running the dashboard locally.

@@ -58,13 +58,14 @@ parts:
   # into the runtime components. Building from source requires bazel and takes
   # 30+ minutes - not practical for iterative snap development.
   #
-  # For production: fetch from https://github.com/openvinotoolkit/model_server/releases
-  # For development: extract from the Docker image:
-  #   docker create --name ovms-extract openvino/model_server:2024.5 && \
-  #   docker cp ovms-extract:/ovms/bin/ovms ./ovms-binary && \
-  #   docker rm ovms-extract
+  # Extract from the Docker image before running snapcraft (see docs/building-snaps.md):
+  #   docker create --name ovms-tmp openvino/model_server:2024.5
+  #   docker cp ovms-tmp:/ovms/bin/ovms ./ovms
+  #   docker cp ovms-tmp:/ovms/lib/ ./lib
+  #   docker rm ovms-tmp
   ovms:
     source: .
+    source-type: local
     plugin: nil
     override-build: |
       # Fetch OVMS pre-built binary from the official Docker image

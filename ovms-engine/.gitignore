@@ -1,0 +1,4 @@
+# Pre-extracted OVMS binary and libraries (extracted from Docker image before snap build)
+# See snap/snapcraft.yaml ovms part for extraction instructions
+ovms
+lib/

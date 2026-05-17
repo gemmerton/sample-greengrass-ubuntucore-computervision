@@ -53,7 +53,7 @@ parts:
       # libav bridge: avdec_* decoders
       - gstreamer1.0-libav
       # GObject introspection runtime (needed by PyGObject at runtime)
-      - libgirepository-1.0-0
+      - libgirepository-1.0-1
       # GStreamer typelibs for Python `gi.require_version('Gst', '1.0')`
       - gir1.2-gstreamer-1.0
       - gir1.2-gst-plugins-base-1.0
@@ -121,10 +121,12 @@ parts:
       - libcurl4-openssl-dev
       - libgstreamer1.0-dev
       - libgstreamer-plugins-base1.0-dev
+      - liblog4cplus-dev
     stage-packages:
       # Runtime deps for the KVS SDK native libraries
       - libssl3
       - libcurl4t64
+      - liblog4cplus-2.0.5t64
     override-build: |
       set -e
 
@@ -165,10 +167,11 @@ parts:
         -exec install {} "${CRAFT_PART_INSTALL}/gstreamer-kvs/lib/" \;
 
     organize:
-      # SSL/curl runtime libraries for KVS SDK
+      # SSL/curl/log4cplus runtime libraries for KVS SDK
       usr/lib/x86_64-linux-gnu/libssl.so*: gstreamer-kvs/lib/
       usr/lib/x86_64-linux-gnu/libcrypto.so*: gstreamer-kvs/lib/
       usr/lib/x86_64-linux-gnu/libcurl.so*: gstreamer-kvs/lib/
+      usr/lib/x86_64-linux-gnu/liblog4cplus*.so*: gstreamer-kvs/lib/
 
 # ── Content interface slot ────────────────────────────────────────────────────
 # The aws-iot-greengrass snap must declare a matching plug:
