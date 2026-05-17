@@ -29,7 +29,8 @@ class AWSResourcesSetup:
         self.iot = boto3.client('iot', region_name=aws_region)
         self.sts = boto3.client('sts', region_name=aws_region)
         self.s3 = boto3.client('s3', region_name=aws_region)
-        
+        self.kvs = boto3.client('kinesisvideo', region_name=aws_region)
+
         self.account_id = self.sts.get_caller_identity()['Account']
 
     def find_existing_user_pool(self):
@@ -558,6 +559,80 @@ REACT_APP_IOT_POLICY_NAME={iot_policy_name}
         with open('react-web/.env', 'w', encoding='utf-8') as f:
             f.write(env_content)
         print("Created react-web/.env file")
+
+    def create_kvs_stream(self, stream_name: str, retention_hours: int = 24) -> str:
+        """Create a KVS stream or return the ARN of the existing one."""
+        try:
+            resp = self.kvs.describe_stream(StreamName=stream_name)
+            arn = resp["StreamInfo"]["StreamARN"]
+            print(f"KVS stream already exists: {arn}")
+            return arn
+        except ClientError as e:
+            if e.response["Error"]["Code"] != "ResourceNotFoundException":
+                print(f"Error checking KVS stream: {e}")
+                raise
+        resp = self.kvs.create_stream(
+            StreamName=stream_name,
+            DataRetentionInHours=retention_hours,
+        )
+        arn = resp["StreamARN"]
+        print(f"Created KVS stream: {arn}")
+        return arn
+
+    def attach_kvs_producer_policy(self, role_name: str, stream_arn: str) -> None:
+        """Attach a policy granting the Greengrass TES role KVS producer permissions."""
+        policy_name = f"{self.project_name}-kvs-producer-policy"
+        self._attach_inline_policy(role_name, policy_name, {
+            "Version": "2012-10-17",
+            "Statement": [{
+                "Effect": "Allow",
+                "Action": [
+                    "kinesisvideo:PutMedia",
+                    "kinesisvideo:CreateStream",
+                    "kinesisvideo:DescribeStream",
+                    "kinesisvideo:GetDataEndpoint",
+                ],
+                "Resource": stream_arn,
+            }],
+        })
+
+    def attach_kvs_viewer_policy(self, role_name: str, stream_arn: str) -> None:
+        """Attach a policy granting the Cognito authenticated role KVS viewer permissions."""
+        policy_name = f"{self.project_name}-kvs-viewer-policy"
+        self._attach_inline_policy(role_name, policy_name, {
+            "Version": "2012-10-17",
+            "Statement": [{
+                "Effect": "Allow",
+                "Action": [
+                    "kinesisvideo:GetHLSStreamingSessionURL",
+                    "kinesisvideo:GetDataEndpoint",
+                    "kinesisvideo:DescribeStream",
+                ],
+                "Resource": stream_arn,
+            }],
+        })
+
+    def _attach_inline_policy(self, role_name: str, policy_name: str,
+                               policy_document: dict) -> None:
+        existing = self.iam.list_attached_role_policies(RoleName=role_name)
+        for p in existing["AttachedPolicies"]:
+            if p["PolicyName"] == policy_name:
+                print(f"Policy {policy_name} already attached to {role_name}")
+                return
+        try:
+            resp = self.iam.create_policy(
+                PolicyName=policy_name,
+                PolicyDocument=json.dumps(policy_document),
+            )
+            policy_arn = resp["Policy"]["Arn"]
+        except ClientError as e:
+            if e.response["Error"]["Code"] != "EntityAlreadyExists":
+                raise
+            policy_arn = (
+                f"arn:aws:iam::{self.account_id}:policy/{policy_name}"
+            )
+        self.iam.attach_role_policy(RoleName=role_name, PolicyArn=policy_arn)
+        print(f"Attached {policy_name} to {role_name}")
 
     def setup_all(self, s3_bucket=None, demo_password=None):
         """Setup all AWS resources."""
