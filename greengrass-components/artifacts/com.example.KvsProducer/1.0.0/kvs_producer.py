@@ -1,4 +1,4 @@
-import os, sys, json, time, logging, datetime
+import os, sys, json, time, logging, datetime, threading
 from dataclasses import replace
 import numpy as np
 import awsiot.greengrasscoreipc.clientv2 as clientv2
@@ -33,6 +33,7 @@ class KvsProducer:
         self._config = DEFAULT_CONFIG
         self._annotator = FrameAnnotator(
             staleness_window_seconds=self._config.staleness_window_seconds)
+        self._state_lock = threading.Lock()
         self._capture_pipeline = None
         self._encoding_pipeline = None
         self._last_frame_sent_time: float = 0.0
@@ -80,9 +81,12 @@ class KvsProducer:
             self._encoding_pipeline.stop()
 
     def _on_raw_frame(self, frame: np.ndarray, frame_time: float):
-        if not self._config.streaming_enabled:
+        with self._state_lock:
+            streaming_enabled = self._config.streaming_enabled
+            annotator = self._annotator
+        if not streaming_enabled:
             return
-        annotated = self._annotator.annotate(frame, frame_time)
+        annotated = annotator.annotate(frame, frame_time)
         if self._encoding_pipeline and self._encoding_pipeline.push_frame(annotated):
             self._health_monitor.record_frame_sent()
             self._last_frame_sent_time = frame_time
@@ -150,18 +154,22 @@ class KvsProducer:
             delta = json.loads(event.message.payload).get("state", {})
             new_config, errors = self._shadow_mgr.apply_delta(delta)
             if errors:
-                self._shadow_mgr.report_state(self._config, "error")
+                with self._state_lock:
+                    current_config = self._config
+                self._shadow_mgr.report_state(current_config, "error")
                 return
-            needs_restart = (new_config.frame_rate != self._config.frame_rate
-                             or new_config.resolution != self._config.resolution)
-            self._config = new_config
-            self._annotator = FrameAnnotator(
-                staleness_window_seconds=self._config.staleness_window_seconds)
+            with self._state_lock:
+                old_config = self._config
+                self._config = new_config
+                self._annotator = FrameAnnotator(
+                    staleness_window_seconds=new_config.staleness_window_seconds)
+            needs_restart = (new_config.frame_rate != old_config.frame_rate
+                             or new_config.resolution != old_config.resolution)
             if needs_restart and self._encoding_pipeline:
-                w, h = map(int, self._config.resolution.split("x"))
-                self._encoding_pipeline.reconfigure(self._config.frame_rate, w, h)
-            status = "streaming" if self._config.streaming_enabled else "stopped"
-            self._shadow_mgr.report_state(self._config, status)
+                w, h = map(int, new_config.resolution.split("x"))
+                self._encoding_pipeline.reconfigure(new_config.frame_rate, w, h)
+            status = "streaming" if new_config.streaming_enabled else "stopped"
+            self._shadow_mgr.report_state(new_config, status)
         except Exception as e:
             logger.warning("Failed to apply shadow delta: %s", e)
 
