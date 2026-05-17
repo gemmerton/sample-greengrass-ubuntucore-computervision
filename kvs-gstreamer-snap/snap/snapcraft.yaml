@@ -61,6 +61,8 @@ parts:
       - python3-gi
       # SIMD optimisation used by GStreamer video plugins
       - liborc-0.4-0
+      # Stack unwinding — transitive dep of libglib-2.0, not in core24
+      - libunwind8
     organize:
       # ── GStreamer core and plugin support libraries ──
       usr/lib/x86_64-linux-gnu/libgstreamer-1.0.so*: gstreamer-kvs/lib/
@@ -87,6 +89,9 @@ parts:
       usr/lib/x86_64-linux-gnu/libgirepository-1.0.so*: gstreamer-kvs/lib/
       usr/lib/x86_64-linux-gnu/libffi.so*: gstreamer-kvs/lib/
       usr/lib/x86_64-linux-gnu/liborc-0.4.so*: gstreamer-kvs/lib/
+      # libunwind: transitive dep of libglib-2.0 for stack backtraces
+      usr/lib/x86_64-linux-gnu/libunwind.so*: gstreamer-kvs/lib/
+      usr/lib/x86_64-linux-gnu/libunwind-x86_64.so*: gstreamer-kvs/lib/
       # ── GStreamer plugins directory (all staged plugins go here) ──
       usr/lib/x86_64-linux-gnu/gstreamer-1.0/: gstreamer-kvs/lib/gstreamer-1.0/
       # ── gst-plugin-scanner: subprocess used when building plugin registry ──
