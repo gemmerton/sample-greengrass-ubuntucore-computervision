@@ -1,0 +1,190 @@
+name: kvs-gstreamer
+version: '1.0.0'
+title: GStreamer + AWS KVS Producer Plugin
+summary: GStreamer runtime and kvssink plugin for Ubuntu Core KVS streaming
+description: |
+  Provides the GStreamer 1.x runtime libraries, standard plugin sets, GObject
+  introspection typelibs (for Python gi bindings), and the AWS Kinesis Video
+  Streams Producer SDK GStreamer plugin (libgstkvssink.so).
+
+  This snap exists solely to solve the Ubuntu Core snap-confinement constraint:
+  the aws-iot-greengrass snap runs under strict confinement, so Greengrass
+  component lifecycle scripts cannot call apt-get or build from source. Instead
+  this snap pre-builds everything and exposes it via a content interface.
+
+  After building and installing this snap, connect it to the Greengrass snap:
+
+    snap install --dangerous kvs-gstreamer_*.snap
+    snap connect aws-iot-greengrass:gstreamer-kvs kvs-gstreamer:gstreamer-kvs
+
+  The Greengrass snap must declare a matching content plug named gstreamer-kvs
+  (content: gstreamer-kvs). The com.example.KvsProducer component recipe reads
+  the GstKvsMount configuration value to locate the mounted content.
+
+contact: https://github.com/aws-samples/sample-greengrass-ubuntucore-computervision/issues
+source-code: https://github.com/aws-samples/sample-greengrass-ubuntucore-computervision
+license: MIT-0
+
+base: core24
+grade: stable
+confinement: strict
+
+platforms:
+  amd64:
+
+parts:
+  # ── Part 1: GStreamer runtime ────────────────────────────────────────────────
+  # Stage all GStreamer runtime libraries and plugins from Ubuntu 24.04 packages,
+  # then reorganize them into $SNAP/gstreamer-kvs/ so the content slot exposes
+  # a single, self-contained directory tree.
+  gstreamer-runtime:
+    plugin: nil
+    stage-packages:
+      # GStreamer core
+      - libgstreamer1.0-0
+      # Base plugins: videoconvert, videorate, videoscale, jpegenc, appsrc/appsink
+      - gstreamer1.0-plugins-base
+      # Good plugins: v4l2src, jpegdec, qtmux
+      - gstreamer1.0-plugins-good
+      # Bad plugins: h264parse, video4linux2 extras
+      - gstreamer1.0-plugins-bad
+      # Ugly plugins: x264enc (H.264 encoder used by EncodingPipeline)
+      - gstreamer1.0-plugins-ugly
+      # libav bridge: avdec_* decoders
+      - gstreamer1.0-libav
+      # GObject introspection runtime (needed by PyGObject at runtime)
+      - libgirepository-1.0-0
+      # GStreamer typelibs for Python `gi.require_version('Gst', '1.0')`
+      - gir1.2-gstreamer-1.0
+      - gir1.2-gst-plugins-base-1.0
+      # Python GI bindings (pre-compiled; avoids pip needing dev headers)
+      - python3-gi
+      # SIMD optimisation used by GStreamer video plugins
+      - liborc-0.4-0
+    organize:
+      # ── GStreamer core and plugin support libraries ──
+      usr/lib/x86_64-linux-gnu/libgstreamer-1.0.so*: gstreamer-kvs/lib/
+      usr/lib/x86_64-linux-gnu/libgstbase-1.0.so*: gstreamer-kvs/lib/
+      usr/lib/x86_64-linux-gnu/libgstvideo-1.0.so*: gstreamer-kvs/lib/
+      usr/lib/x86_64-linux-gnu/libgstaudio-1.0.so*: gstreamer-kvs/lib/
+      usr/lib/x86_64-linux-gnu/libgstapp-1.0.so*: gstreamer-kvs/lib/
+      usr/lib/x86_64-linux-gnu/libgstpbutils-1.0.so*: gstreamer-kvs/lib/
+      usr/lib/x86_64-linux-gnu/libgstnet-1.0.so*: gstreamer-kvs/lib/
+      usr/lib/x86_64-linux-gnu/libgstrtp-1.0.so*: gstreamer-kvs/lib/
+      usr/lib/x86_64-linux-gnu/libgstsdp-1.0.so*: gstreamer-kvs/lib/
+      usr/lib/x86_64-linux-gnu/libgsttag-1.0.so*: gstreamer-kvs/lib/
+      usr/lib/x86_64-linux-gnu/libgstrtsp-1.0.so*: gstreamer-kvs/lib/
+      usr/lib/x86_64-linux-gnu/libgstallocators-1.0.so*: gstreamer-kvs/lib/
+      usr/lib/x86_64-linux-gnu/libgstbadaudio-1.0.so*: gstreamer-kvs/lib/
+      usr/lib/x86_64-linux-gnu/libgstcontroller-1.0.so*: gstreamer-kvs/lib/
+      usr/lib/x86_64-linux-gnu/libgstcheck-1.0.so*: gstreamer-kvs/lib/
+      usr/lib/x86_64-linux-gnu/libgstgl-1.0.so*: gstreamer-kvs/lib/
+      # ── GLib / GObject / GIO (GStreamer runtime foundation) ──
+      usr/lib/x86_64-linux-gnu/libglib-2.0.so*: gstreamer-kvs/lib/
+      usr/lib/x86_64-linux-gnu/libgobject-2.0.so*: gstreamer-kvs/lib/
+      usr/lib/x86_64-linux-gnu/libgio-2.0.so*: gstreamer-kvs/lib/
+      usr/lib/x86_64-linux-gnu/libgmodule-2.0.so*: gstreamer-kvs/lib/
+      usr/lib/x86_64-linux-gnu/libgirepository-1.0.so*: gstreamer-kvs/lib/
+      usr/lib/x86_64-linux-gnu/libffi.so*: gstreamer-kvs/lib/
+      usr/lib/x86_64-linux-gnu/liborc-0.4.so*: gstreamer-kvs/lib/
+      # ── GStreamer plugins directory (all staged plugins go here) ──
+      usr/lib/x86_64-linux-gnu/gstreamer-1.0/: gstreamer-kvs/lib/gstreamer-1.0/
+      # ── gst-plugin-scanner: subprocess used when building plugin registry ──
+      # Path on Ubuntu 24.04: usr/lib/x86_64-linux-gnu/gstreamer1.0/gstreamer-1.0/
+      usr/lib/x86_64-linux-gnu/gstreamer1.0/gstreamer-1.0/gst-plugin-scanner: gstreamer-kvs/lib/gstreamer-1.0/gst-plugin-scanner
+      # ── GObject introspection typelibs ──
+      # Gst-1.0.typelib, GstApp-1.0.typelib, GstBase-1.0.typelib, etc.
+      usr/lib/x86_64-linux-gnu/girepository-1.0/: gstreamer-kvs/lib/girepository-1.0/
+      # ── Python gi package (pre-compiled; PYTHONPATH points here) ──
+      # Includes _gi.cpython-312-x86_64-linux-gnu.so and pure-Python stubs
+      usr/lib/python3/dist-packages/gi/: gstreamer-kvs/lib/python3/gi/
+
+  # ── Part 2: KVS Producer SDK (builds libgstkvssink.so) ──────────────────────
+  # Clones the KVS Producer SDK from GitHub and compiles it with
+  # -DBUILD_GSTREAMER_PLUGIN=ON.  The build is done at snap build time, so the
+  # component lifecycle script never needs cmake, g++, or internet access.
+  #
+  # Pre-requisite: the build environment must have an internet connection to clone
+  # from GitHub. In CI/CD, run `snapcraft` inside a container or VM.
+  kvs-producer-sdk:
+    source: .
+    plugin: nil
+    after:
+      - gstreamer-runtime
+    build-packages:
+      - cmake
+      - g++
+      - make
+      - pkg-config
+      - git
+      - libssl-dev
+      - libcurl4-openssl-dev
+      - libgstreamer1.0-dev
+      - libgstreamer-plugins-base1.0-dev
+    stage-packages:
+      # Runtime deps for the KVS SDK native libraries
+      - libssl3
+      - libcurl4t64
+    override-build: |
+      set -e
+
+      KVS_TAG="v3.4.1"
+      KVS_SRC="${CRAFT_PART_BUILD}/kvs-sdk-src"
+      KVS_BUILD="${CRAFT_PART_BUILD}/kvs-sdk-build"
+
+      echo "Cloning KVS Producer SDK ${KVS_TAG}..."
+      git clone --depth 1 --branch "${KVS_TAG}" \
+        https://github.com/awslabs/amazon-kinesis-video-streams-producer-sdk-cpp \
+        "${KVS_SRC}"
+
+      echo "Configuring..."
+      cmake -S "${KVS_SRC}" -B "${KVS_BUILD}" \
+        -DBUILD_GSTREAMER_PLUGIN=ON \
+        -DBUILD_DEPENDENCIES=OFF \
+        -DBUILD_TEST=OFF \
+        -DCMAKE_BUILD_TYPE=Release
+
+      echo "Building (using $(nproc) cores)..."
+      cmake --build "${KVS_BUILD}" --parallel "$(nproc)"
+
+      # Install kvssink into the GStreamer plugin directory
+      install -d "${CRAFT_PART_INSTALL}/gstreamer-kvs/lib/gstreamer-1.0"
+      if [ -f "${KVS_BUILD}/libgstkvssink.so" ]; then
+        install "${KVS_BUILD}/libgstkvssink.so" \
+          "${CRAFT_PART_INSTALL}/gstreamer-kvs/lib/gstreamer-1.0/"
+        echo "Installed libgstkvssink.so"
+      else
+        echo "ERROR: libgstkvssink.so not found in ${KVS_BUILD}" >&2
+        exit 1
+      fi
+
+      # Install KVS SDK shared libraries (libKinesisVideoProducer, etc.)
+      install -d "${CRAFT_PART_INSTALL}/gstreamer-kvs/lib"
+      find "${KVS_BUILD}" -maxdepth 1 -name "*.so*" \
+        ! -name "libgstkvssink.so" \
+        -exec install {} "${CRAFT_PART_INSTALL}/gstreamer-kvs/lib/" \;
+
+    organize:
+      # SSL/curl runtime libraries for KVS SDK
+      usr/lib/x86_64-linux-gnu/libssl.so*: gstreamer-kvs/lib/
+      usr/lib/x86_64-linux-gnu/libcrypto.so*: gstreamer-kvs/lib/
+      usr/lib/x86_64-linux-gnu/libcurl.so*: gstreamer-kvs/lib/
+
+# ── Content interface slot ────────────────────────────────────────────────────
+# The aws-iot-greengrass snap must declare a matching plug:
+#
+#   plugs:
+#     gstreamer-kvs:
+#       interface: content
+#       content: gstreamer-kvs
+#       target: $SNAP_COMMON/gstreamer-kvs
+#
+# After `snap connect aws-iot-greengrass:gstreamer-kvs kvs-gstreamer:gstreamer-kvs`
+# the Greengrass snap can read all files under $SNAP/gstreamer-kvs/ from this snap.
+# The com.example.KvsProducer recipe defaults GstKvsMount to the target path above.
+slots:
+  gstreamer-kvs:
+    interface: content
+    content: gstreamer-kvs
+    read:
+      - $SNAP/gstreamer-kvs

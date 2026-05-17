@@ -276,46 +276,77 @@ The existing `setup_aws_resources.py` is extended with:
 
 ### 8. Snap Deployment on Ubuntu Core
 
-Ubuntu Core is an immutable snap-based OS. The KVS Producer SDK's GStreamer plugin (`libgstkvssink.so`) must be compiled from source during the Greengrass component's `Install` lifecycle step.
+Ubuntu Core is an immutable snap-based OS with strict confinement. The `aws-iot-greengrass` snap runs under strict confinement, which means Greengrass component lifecycle scripts **cannot** call `apt-get`, `git`, `cmake`, or any other host-level build tooling. The KVS Producer SDK's GStreamer plugin (`libgstkvssink.so`) must therefore be pre-built and delivered to the component via the **snap content interface**, following the same pattern used by the `ovms-engine` snap for OVMS inference libraries.
 
-**Install lifecycle steps:**
-1. Install build dependencies via `apt-get` (available on Ubuntu Core 22+ via the base snap): `cmake`, `g++`, `libssl-dev`, `libcurl4-openssl-dev`, `libgstreamer1.0-dev`, `gstreamer1.0-plugins-base`, `gstreamer1.0-plugins-good`, `gstreamer1.0-plugins-bad`, `python3-gi`, `gir1.2-gstreamer-1.0`
-2. Clone and compile `amazon-kinesis-video-streams-producer-sdk-cpp` with `-DBUILD_GSTREAMER_PLUGIN=ON`
-3. Set `GST_PLUGIN_PATH` in the `Run` lifecycle to the build output directory so GStreamer discovers `libgstkvssink.so`
+**Dedicated snap: `kvs-gstreamer`**
 
-**Recipe lifecycle sketch:**
+The `kvs-gstreamer-snap/snap/snapcraft.yaml` in this repo defines a standalone snap that:
 
-```yaml
-ComponentConfiguration:
-  DefaultConfiguration:
-    KvsProducerSdkBuildDir: "{work:path}/kvs-producer-sdk-build"
-    Region: "us-east-1"
+1. Compiles `libgstkvssink.so` from the KVS Producer SDK source (`v3.4.1`) at **snap build time** (not at component install time) using `cmake -DBUILD_GSTREAMER_PLUGIN=ON -DBUILD_DEPENDENCIES=OFF`.
+2. Stages the GStreamer 1.x runtime and plugin libraries from Ubuntu 24.04 packages (`libgstreamer1.0-0`, `gstreamer1.0-plugins-base/good/bad/ugly`, `gstreamer1.0-libav`).
+3. Stages the GObject introspection typelibs (`gir1.2-gstreamer-1.0`) and the pre-compiled Python GI bindings (`python3-gi`) so that `import gi; gi.require_version('Gst', '1.0')` works inside the component without pip needing C headers.
+4. Organises all of the above under `$SNAP/gstreamer-kvs/` and exposes it via a `content: gstreamer-kvs` slot.
 
-Lifecycle:
-  Install:
-    Script: |
-      apt-get install -y cmake g++ libssl-dev libcurl4-openssl-dev \
-        libgstreamer1.0-dev gstreamer1.0-plugins-base \
-        gstreamer1.0-plugins-good gstreamer1.0-plugins-bad \
-        python3-gi gir1.2-gstreamer-1.0
-      git clone --depth 1 \
-        https://github.com/awslabs/amazon-kinesis-video-streams-producer-sdk-cpp \
-        {configuration:/KvsProducerSdkBuildDir}/src
-      cmake -S {configuration:/KvsProducerSdkBuildDir}/src \
-            -B {configuration:/KvsProducerSdkBuildDir}/build \
-            -DBUILD_GSTREAMER_PLUGIN=ON
-      cmake --build {configuration:/KvsProducerSdkBuildDir}/build --parallel 4
-  Run:
-    Script: |
-      export GST_PLUGIN_PATH={configuration:/KvsProducerSdkBuildDir}/build
-      export AWS_DEFAULT_REGION={configuration:/Region}
-      python3 {artifacts:path}/kvs_producer.py
+```
+gstreamer-kvs/
+  lib/
+    libgstreamer-1.0.so*         # GStreamer core
+    libgst*.so*                  # GStreamer base/video/audio/app/...
+    libglib-2.0.so*, libgobject-2.0.so*, ...  # GLib
+    libssl.so*, libcurl.so*      # KVS SDK deps
+    libKinesisVideoProducer.so*  # KVS SDK
+    gstreamer-1.0/
+      libgstkvssink.so           # KVS GStreamer plugin (built by this snap)
+      libgst*.so                 # all standard GStreamer plugins
+      gst-plugin-scanner         # GStreamer plugin scanner binary
+    girepository-1.0/
+      Gst-1.0.typelib            # typelibs for Python gi bindings
+      GstApp-1.0.typelib
+      ...
+    python3/
+      gi/                        # pre-compiled Python GI package
+        _gi.cpython-312-*.so
+        ...
 ```
 
-> **Build time:** Compiling the KVS Producer SDK takes 5–15 minutes on typical edge hardware. This cost is paid once per deployment.
+**One-time device setup:**
 
-**Camera device access:** The Greengrass snap requires the `camera` snap interface to access `/dev/video0`. Connect it once after snap installation:
+```bash
+# Build the snap (requires snapcraft and Docker/LXD on a developer machine)
+cd kvs-gstreamer-snap
+snapcraft
+
+# Copy snap to device and install
+scp kvs-gstreamer_*.snap ubuntu@<device-ip>:~
+ssh ubuntu@<device-ip>
+snap install --dangerous ~/kvs-gstreamer_*.snap
+
+# Connect the content interface (Greengrass snap must declare matching plug)
+snap connect aws-iot-greengrass:gstreamer-kvs kvs-gstreamer:gstreamer-kvs
+
+# Grant camera device access
+snap connect aws-iot-greengrass:camera
 ```
+
+> **Greengrass snap plug requirement:** The `aws-iot-greengrass` snap must declare a `gstreamer-kvs` content plug (with `content: gstreamer-kvs`) so that `snap connect` can bind the slot. For this partnership demo, coordinate with the Greengrass snap maintainers (AWS/Canonical) to add this plug. The plug `target` determines the mount path seen by component scripts; the recipe defaults to `$SNAP_COMMON/gstreamer-kvs` = `/var/snap/aws-iot-greengrass/common/gstreamer-kvs`. Update the `GstKvsMount` component configuration if your Greengrass snap uses a different target path.
+
+**Component lifecycle (no build steps):**
+
+The `com.example.KvsProducer` recipe Install script only sets up the Python venv and installs pip-installable Python deps (`awsiotsdk`, `opencv-python-headless`, `numpy`). The `PyGObject` package is deliberately **not** pip-installed — the pre-compiled `gi` package from the snap content mount is used instead (pip cannot compile PyGObject inside snap confinement because there are no C headers available at install time).
+
+The Run script exports five environment variables that point into the content mount before starting the component:
+
+```bash
+export LD_LIBRARY_PATH="${GstKvsMount}/lib"
+export GST_PLUGIN_PATH="${GstKvsMount}/lib/gstreamer-1.0"
+export GI_TYPELIB_PATH="${GstKvsMount}/lib/girepository-1.0"
+export GST_PLUGIN_SCANNER="${GstKvsMount}/lib/gstreamer-1.0/gst-plugin-scanner"
+export PYTHONPATH="${GstKvsMount}/lib/python3"
+```
+
+**Camera device access:**
+
+```bash
 snap connect aws-iot-greengrass:camera
 ```
 

@@ -25,7 +25,20 @@ ComponentConfiguration:
     KvsStreamName: "ubuntu-core-gg-demo-stream"
     Region: "us-east-1"
     CameraDevice: "/dev/video0"
-    KvsProducerSdkBuildDir: "{work:path}/kvs-producer-sdk-build"
+    # Path where the kvs-gstreamer snap content interface is mounted.
+    #
+    # Ubuntu Core snap confinement prevents apt-get and cmake inside Greengrass
+    # component lifecycle scripts. GStreamer runtime libraries and libgstkvssink.so
+    # are instead pre-built into the kvs-gstreamer snap and shared here via the
+    # snap content interface.
+    #
+    # Deploy steps (once per device, after installing the kvs-gstreamer snap):
+    #   snap connect aws-iot-greengrass:gstreamer-kvs kvs-gstreamer:gstreamer-kvs
+    #
+    # The mount path below matches the target declared in the Greengrass snap's
+    # gstreamer-kvs content plug.  Update if your Greengrass snap uses a different
+    # target (e.g. $SNAP_DATA/gstreamer-kvs = /var/snap/aws-iot-greengrass/current/gstreamer-kvs).
+    GstKvsMount: "/var/snap/aws-iot-greengrass/common/gstreamer-kvs"
     accessControl:
       aws.greengrass.ShadowManager:
         com.example.KvsProducer:shadow:1:
@@ -57,35 +70,29 @@ Manifests:
       os: linux
     Lifecycle:
       Install:
-        Timeout: 900
+        Timeout: 300
         Script: |
-          set -e
-          apt-get install -y cmake g++ libssl-dev libcurl4-openssl-dev \
-            libgstreamer1.0-dev gstreamer1.0-plugins-base \
-            gstreamer1.0-plugins-good gstreamer1.0-plugins-bad \
-            python3-gi gir1.2-gstreamer-1.0
-          git clone --depth 1 \
-            https://github.com/awslabs/amazon-kinesis-video-streams-producer-sdk-cpp \
-            {configuration:/KvsProducerSdkBuildDir}/src
-          cmake -S {configuration:/KvsProducerSdkBuildDir}/src \
-                -B {configuration:/KvsProducerSdkBuildDir}/build \
-                -DBUILD_GSTREAMER_PLUGIN=ON
-          cmake --build {configuration:/KvsProducerSdkBuildDir}/build --parallel 4
-          python3 -m venv --without-pip venv/
-          . venv/bin/activate
-          python3 {artifacts:path}/get-pip.py
-          python3 -m pip install -r {artifacts:path}/requirements.txt
-          deactivate
+          /bin/bash -c 'set -e && \
+          python3 -m venv --without-pip venv/ && \
+          source venv/bin/activate && \
+          python3 {artifacts:path}/get-pip.py && \
+          python3 -m pip install -r {artifacts:path}/requirements.txt && \
+          deactivate'
       Run:
         Script: |
-          set -e
-          export GST_PLUGIN_PATH={configuration:/KvsProducerSdkBuildDir}/build
-          export AWS_DEFAULT_REGION="{configuration:/Region}"
-          export KVS_STREAM_NAME="{configuration:/KvsStreamName}"
-          export CAMERA_DEVICE="{configuration:/CameraDevice}"
-          export AWS_IOT_THING_NAME="{iot:thingName}"
-          . venv/bin/activate
-          python3 {artifacts:path}/kvs_producer.py
+          /bin/bash -c 'set -e && \
+          GST_KVS_MOUNT="{configuration:/GstKvsMount}" && \
+          export LD_LIBRARY_PATH="${GST_KVS_MOUNT}/lib:${LD_LIBRARY_PATH:-}" && \
+          export GST_PLUGIN_PATH="${GST_KVS_MOUNT}/lib/gstreamer-1.0" && \
+          export GI_TYPELIB_PATH="${GST_KVS_MOUNT}/lib/girepository-1.0" && \
+          export GST_PLUGIN_SCANNER="${GST_KVS_MOUNT}/lib/gstreamer-1.0/gst-plugin-scanner" && \
+          export PYTHONPATH="${GST_KVS_MOUNT}/lib/python3:${PYTHONPATH:-}" && \
+          export AWS_DEFAULT_REGION="{configuration:/Region}" && \
+          export KVS_STREAM_NAME="{configuration:/KvsStreamName}" && \
+          export CAMERA_DEVICE="{configuration:/CameraDevice}" && \
+          export AWS_IOT_THING_NAME="{iot:thingName}" && \
+          source venv/bin/activate && \
+          python3 {artifacts:path}/kvs_producer.py'
     Artifacts:
       - Uri: kvs_producer.py
         Unarchive: NONE
