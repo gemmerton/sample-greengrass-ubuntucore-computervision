@@ -257,21 +257,52 @@ class GreengrassDeployer:
         
         return components
 
+    def _get_latest_public_component_version(self, component_name):
+        """Return the latest version of a public AWS Greengrass component."""
+        arn = f"arn:aws:greengrass:{self.aws_region}:aws:components:{component_name}"
+        try:
+            response = self.greengrass_client.list_component_versions(arn=arn)
+            versions = [v['componentVersion'] for v in response.get('componentVersions', [])]
+            if versions:
+                def _ver_key(v):
+                    try:
+                        return tuple(int(x) for x in v.split('.'))
+                    except ValueError:
+                        return (0, 0, 0)
+                return max(versions, key=_ver_key)
+        except ClientError as e:
+            print(f"Warning: could not resolve latest version for {component_name}: {e}")
+        return None
+
     def create_deployment(self, thing_name, components):
         """Create a Greengrass deployment to the specified IoT Thing."""
         deployment_name = f"deployment-{thing_name}"
-        
-        # Build component configuration
+
+        # Build component configuration from the supplied custom components
         component_config = {}
         for component in components:
-            config = {
+            component_config[component['componentName']] = {
                 'componentVersion': component['componentVersion'],
                 'configurationUpdate': {
                     'reset': ['']
                 }
             }
-            
-            component_config[component['componentName']] = config
+
+        # Include AWS-managed system components required by KvsProducer and ModelManagerCore.
+        # These are public components — we resolve the latest available version rather than
+        # hardcoding, so the deployment stays current without manual version bumps.
+        system_components = [
+            'aws.greengrass.ShadowManager',
+            'aws.greengrass.TokenExchangeService',
+        ]
+        for name in system_components:
+            if name not in component_config:
+                version = self._get_latest_public_component_version(name)
+                if version:
+                    component_config[name] = {'componentVersion': version}
+                    print(f"Including system component {name} v{version}")
+                else:
+                    print(f"Warning: skipping {name} — could not resolve version")
 
         try:
             response = self.greengrass_client.create_deployment(

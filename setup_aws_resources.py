@@ -634,50 +634,62 @@ REACT_APP_IOT_POLICY_NAME={iot_policy_name}
         self.iam.attach_role_policy(RoleName=role_name, PolicyArn=policy_arn)
         print(f"Attached {policy_name} to {role_name}")
 
-    def setup_all(self, s3_bucket=None, demo_password=None):
+    def setup_all(self, s3_bucket=None, demo_password=None, kvs_stream_name=None):
         """Setup all AWS resources."""
         print(f"Setting up AWS resources in region: {self.aws_region}")
-        
+
+        if kvs_stream_name is None:
+            kvs_stream_name = f'{self.project_name}-stream'
+
         # Create S3 bucket if provided
         if s3_bucket:
             s3_bucket = self.create_s3_bucket(s3_bucket)
-        
+
         # Create Greengrass Token Exchange Role and Role Alias
         gg_role_arn = self.create_greengrass_token_exchange_role(s3_bucket)
         gg_role_alias_arn = self.create_greengrass_role_alias(gg_role_arn)
-        
+
+        # Create KVS stream and grant the TES role permission to produce to it
+        stream_arn = self.create_kvs_stream(kvs_stream_name)
+        self.attach_kvs_producer_policy('GreengrassV2TokenExchangeRole', stream_arn)
+
         # Create Cognito resources
         user_pool_id = self.create_user_pool()
         client_id = self.create_user_pool_client(user_pool_id)
         identity_pool_id = self.create_identity_pool(user_pool_id, client_id)
-        
+
         # Create demo user
         demo_email = self.create_demo_user(user_pool_id, demo_password)
-        
+
         # Create IoT policy
         iot_policy_name = self.create_iot_policy()
-        
+
         # Create IAM roles
         auth_role_arn, unauth_role_arn = self.create_iam_roles(identity_pool_id, iot_policy_name)
-        
+
+        # Grant the Cognito authenticated role permission to view the KVS stream
+        self.attach_kvs_viewer_policy(f'{self.project_name}-auth-role', stream_arn)
+
         # Set Identity Pool roles
         self.set_identity_pool_roles(identity_pool_id, auth_role_arn, unauth_role_arn)
-        
+
         # Create .env file
         self.create_env_file(user_pool_id, client_id, identity_pool_id, iot_policy_name, s3_bucket)
-        
+
         print("\nAWS resources created successfully!")
         print(f"User Pool ID: {user_pool_id}")
         print(f"Client ID: {client_id}")
         print(f"Identity Pool ID: {identity_pool_id}")
         print(f"IoT Policy: {iot_policy_name}")
         print(f"Demo User: {demo_email}")
+        print(f"KVS Stream: {kvs_stream_name} ({stream_arn})")
 
 def main():
     parser = argparse.ArgumentParser(description='Setup AWS resources for Ubuntu Core Greengrass Demo project')
     parser.add_argument('--region', default='eu-west-1', help='AWS region')
     parser.add_argument('--project-name', default='ubuntu-core-gg-demo', help='Project name prefix')
     parser.add_argument('--s3-bucket', help='S3 bucket name for images')
+    parser.add_argument('--kvs-stream-name', help='KVS stream name (default: <project-name>-stream)')
     parser.add_argument('--demo-password', help='Password for demo user (must be 8+ chars with uppercase, lowercase, number, and special character)')
     
     args = parser.parse_args()
@@ -689,7 +701,7 @@ def main():
     
     try:
         setup = AWSResourcesSetup(args.region, args.project_name)
-        setup.setup_all(args.s3_bucket, demo_password)
+        setup.setup_all(args.s3_bucket, demo_password, args.kvs_stream_name)
     except Exception as e:
         print(f"Setup failed: {e}")
         sys.exit(1)
