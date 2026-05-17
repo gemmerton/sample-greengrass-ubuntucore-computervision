@@ -14,6 +14,11 @@ import { ConfidenceThresholdControl } from './ConfidenceThresholdControl';
 import { ModelSelector } from '../controls/ModelSelector';
 import { S3Provider, useS3 } from '../../contexts/S3Context';
 import { MqttProvider, useMqtt } from '../../contexts/MqttContext';
+import { useAuthenticatedAWS } from '../../hooks/useAuthenticatedAWS';
+import { KvsPlayer } from './KvsPlayer';
+import type { KvsHealthMessage, StreamStatus } from '../../types/kvs';
+import type { AwsCredentialIdentity } from '@aws-sdk/types';
+import { config } from '../../utils/config';
 
 import { S3Object, S3Error } from '../../types/s3';
 import './Dashboard.css';
@@ -30,9 +35,11 @@ const DashboardContent: React.FC<DashboardProps> = ({
 }) => {
   const { state, actions: s3Actions } = useS3();
   const { state: mqttState } = useMqtt();
+  const { credentials, region } = useAuthenticatedAWS();
   const previousMessageCountRef = useRef<number>(0);
   const [thingName, setThingName] = useState<string>('');
   const [settingsOpen, setSettingsOpen] = useState<boolean>(false);
+  const [kvsStreamStatus, setKvsStreamStatus] = useState<StreamStatus>('offline');
 
   /**
    * Handle S3 image gallery errors
@@ -96,6 +103,20 @@ const DashboardContent: React.FC<DashboardProps> = ({
       previousMessageCountRef.current = mqttState.messageCount;
     }
   }, [mqttState.messageCount, state.selectedBucket, state.loading, s3Actions]);
+
+  /**
+   * Watch for KVS health messages on camera/kvs-status topic
+   */
+  useEffect(() => {
+    const lastMsg = mqttState.lastMessage;
+    if (!lastMsg || lastMsg.topic !== 'camera/kvs-status') return;
+    try {
+      const health: KvsHealthMessage = JSON.parse(lastMsg.payload);
+      setKvsStreamStatus(health.connection_status);
+    } catch {
+      // malformed message — ignore
+    }
+  }, [mqttState.lastMessage]);
 
   const s3Status = getS3Status();
   const mqttStatus = getMqttStatus();
@@ -201,6 +222,19 @@ const DashboardContent: React.FC<DashboardProps> = ({
               </article>
             </div>
           </section>
+
+          {/* KVS Live Stream */}
+          {credentials && (
+            <div className="dashboard-video-section">
+              <h3>Live Stream</h3>
+              <KvsPlayer
+                streamName={(import.meta as any).env?.VITE_KVS_STREAM_NAME ?? ''}
+                region={region ?? config.aws.region}
+                credentials={credentials as unknown as AwsCredentialIdentity}
+                streamStatus={kvsStreamStatus}
+              />
+            </div>
+          )}
 
           {/* Custom children content */}
           {children && (
