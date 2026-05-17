@@ -116,9 +116,16 @@ class EncodingPipeline:
     def push_frame(self, frame: np.ndarray) -> bool:
         if not self.is_healthy():
             return False
-        buf = Gst.Buffer.new_wrapped(frame.tobytes())
-        self._appsrc.emit("push-buffer", buf)
-        return True
+        try:
+            buf = Gst.Buffer.new_wrapped(frame.tobytes())
+            flow = self._appsrc.emit("push-buffer", buf)
+            if flow != Gst.FlowReturn.OK:
+                logger.warning("push-buffer returned %s", flow)
+                return False
+            return True
+        except Exception as e:
+            logger.warning("push_frame failed: %s", e)
+            return False
 
     def stop(self) -> None:
         if self._pipeline:
