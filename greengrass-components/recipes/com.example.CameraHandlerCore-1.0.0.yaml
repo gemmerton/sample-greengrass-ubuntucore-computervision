@@ -8,7 +8,7 @@ ComponentConfiguration:
   DefaultConfiguration:
     accessControl:
       aws.greengrass.ipc.pubsub:
-        com.example.CameraHandler:pubsub:1:
+        com.example.CameraHandlerCore:pubsub:1:
           policyDescription: 'Allows publication of capture events'
           operations:
             - 'aws.greengrass#PublishToTopic'
