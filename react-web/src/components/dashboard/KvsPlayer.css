@@ -1,0 +1,30 @@
+.kvs-player-container {
+  position: relative;
+  width: 100%;
+  background: #000;
+  border: 2px solid #444;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.kvs-player-container video {
+  width: 100%;
+  display: block;
+}
+
+.kvs-player-overlay {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  padding: 4px 8px;
+  background: rgba(0, 0, 0, 0.7);
+  color: #fff;
+  font-size: 12px;
+  border-radius: 3px;
+  font-family: monospace;
+}
+
+.kvs-player-overlay.status-error { color: #f66; }
+.kvs-player-overlay.status-buffering { color: #fa0; }
+.kvs-player-overlay.status-streaming { color: #6f6; }
+.kvs-player-overlay.status-offline { color: #aaa; }
