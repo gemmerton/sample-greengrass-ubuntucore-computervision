@@ -152,10 +152,10 @@ class KvsProducer:
     def _on_shadow_delta(self, event):
         try:
             delta = json.loads(event.message.payload).get("state", {})
-            new_config, errors = self._shadow_mgr.apply_delta(delta)
+            with self._state_lock:
+                current_config = self._config
+            new_config, errors = self._shadow_mgr.apply_delta(delta, current_config)
             if errors:
-                with self._state_lock:
-                    current_config = self._config
                 self._shadow_mgr.report_state(current_config, "error")
                 return
             with self._state_lock:

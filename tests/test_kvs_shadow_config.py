@@ -76,6 +76,27 @@ def test_apply_delta_valid_config_has_no_errors():
     assert errors == []
     assert c.frame_rate == 15
 
+def test_apply_delta_partial_preserves_current_config_fields():
+    # AWS shadow deltas only carry changed fields; unchanged fields must not
+    # revert to DEFAULT_CONFIG values — they must be taken from current_config.
+    mgr = ShadowConfigManager(MagicMock(), "t")
+    current = KvsConfig(
+        stream_name="my-stream",
+        frame_rate=25,
+        resolution="1280x720",
+        streaming_enabled=False,
+        staleness_window_seconds=60.0,
+        snapshot_interval_seconds=5,
+    )
+    new_config, errors = mgr.apply_delta({"resolution": "1920x1080"}, current)
+    assert errors == []
+    assert new_config.resolution == "1920x1080"
+    assert new_config.frame_rate == 25          # must come from current, not DEFAULT (15)
+    assert new_config.streaming_enabled is False # must come from current, not DEFAULT (True)
+    assert new_config.stream_name == "my-stream"
+    assert new_config.staleness_window_seconds == 60.0
+    assert new_config.snapshot_interval_seconds == 5
+
 def test_report_state_puts_streaming_status_in_payload():
     ipc = MagicMock()
     mgr = ShadowConfigManager(ipc, "my-thing")

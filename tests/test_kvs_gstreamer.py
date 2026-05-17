@@ -1,8 +1,12 @@
-import sys, os
+import sys, os, importlib
 from unittest.mock import MagicMock, patch, call
 import numpy as np
 
-# Mock gi BEFORE importing gstreamer_pipeline
+# Mock gi BEFORE importing gstreamer_pipeline.
+# Force-remove any stale cached version of gstreamer_pipeline first so that
+# whichever test file pytest collects first (test_kvs_producer.py imports the
+# module via kvs_producer.py with its own gi mock) does not pollute the Gst
+# binding seen by the tests in this file.
 gi_mock = MagicMock()
 gst_mock = MagicMock()
 glib_mock = MagicMock()
@@ -20,6 +24,10 @@ gst_mock.FlowReturn.OK = "OK"
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__),
     "../greengrass-components/artifacts/com.example.KvsProducer/1.0.0"))
+
+# Remove any stale cache entry so gstreamer_pipeline is re-imported with the
+# gi mock defined above, regardless of test collection order.
+sys.modules.pop("gstreamer_pipeline", None)
 
 from gstreamer_pipeline import CapturePipeline, EncodingPipeline
 

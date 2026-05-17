@@ -1,4 +1,8 @@
 import {
+  KinesisVideoClient,
+  GetDataEndpointCommand,
+} from "@aws-sdk/client-kinesis-video";
+import {
   KinesisVideoArchivedMediaClient,
   GetHLSStreamingSessionURLCommand,
   HLSPlaybackMode,
@@ -14,7 +18,26 @@ export async function getHlsStreamingUrl(
   config: KvsStreamConfig,
   credentials: AwsCredentialIdentity
 ): Promise<HlsSessionUrl> {
-  const client = new KinesisVideoArchivedMediaClient({ region: config.region, credentials });
+  // KVS requires a two-step URL resolution: first obtain the stream-specific
+  // data endpoint, then call GetHLSStreamingSessionURL against that endpoint.
+  // Using the main regional endpoint for GetHLSStreamingSessionURL returns 400.
+  const kvsClient = new KinesisVideoClient({ region: config.region, credentials });
+  const endpointResponse = await kvsClient.send(
+    new GetDataEndpointCommand({
+      StreamName: config.streamName,
+      APIName: "GET_HLS_STREAMING_SESSION_URL",
+    })
+  );
+  const dataEndpoint = endpointResponse.DataEndpoint;
+  if (!dataEndpoint) {
+    throw new Error("No data endpoint returned from KVS GetDataEndpoint");
+  }
+
+  const client = new KinesisVideoArchivedMediaClient({
+    region: config.region,
+    credentials,
+    endpoint: dataEndpoint,
+  });
   const command = new GetHLSStreamingSessionURLCommand({
     StreamName: config.streamName,
     PlaybackMode: HLSPlaybackMode.LIVE,

@@ -37,7 +37,7 @@ class CapturePipeline:
             f"t. ! queue ! videoconvert "
             f"! video/x-raw,format=BGR ! appsink name=raw_sink emit-signals=true "
             f"t. ! queue ! videorate "
-            f"! image/jpeg,framerate=1/{self._snapshot_interval} ! jpegenc "
+            f"! video/x-raw,framerate=1/{self._snapshot_interval} ! jpegenc "
             f"! appsink name=snapshot_sink emit-signals=true"
         )
         self._pipeline = Gst.parse_launch(pipeline_str)
