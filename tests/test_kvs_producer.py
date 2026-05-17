@@ -1,4 +1,4 @@
-import sys, os, json, time
+import sys, os, json, time, pytest
 from unittest.mock import MagicMock, patch, call
 import numpy as np
 
@@ -29,7 +29,7 @@ with patch.dict(os.environ, {
     "KVS_STREAM_NAME": "test-stream",
     "AWS_DEFAULT_REGION": "us-east-1",
     "CAMERA_DEVICE": "/dev/video0",
-    "SNAP_USER_DATA": "/tmp/kvs-test",
+    "WORK_PATH": "/tmp/kvs-test",
 }):
     from kvs_producer import KvsProducer
 
@@ -125,3 +125,103 @@ def test_on_detection_message_with_malformed_payload_does_not_crash():
     event = MagicMock()
     event.message.payload = b"not valid json"
     p._on_detection_message(event)  # must not raise
+
+
+def test_check_pipeline_health_no_error_does_not_restart():
+    p, _, _ = make_producer()
+    cap = MagicMock()
+    enc = MagicMock()
+    cap.pop_error.return_value = None
+    enc.pop_error.return_value = None
+    p._capture_pipeline = cap
+    p._encoding_pipeline = enc
+    p._check_pipeline_health()
+    assert p._pipeline_restart_count == 0
+    cap.stop.assert_not_called()
+
+
+def test_check_pipeline_health_restarts_pipelines_on_error():
+    with patch("kvs_producer.clientv2.GreengrassCoreIPCClientV2", return_value=MagicMock()), \
+         patch("kvs_producer.CapturePipeline"), \
+         patch("kvs_producer.EncodingPipeline"):
+        p = KvsProducer()
+    cap = MagicMock()
+    enc = MagicMock()
+    cap.pop_error.return_value = "kvssink: credential error"
+    enc.pop_error.return_value = None
+    p._capture_pipeline = cap
+    p._encoding_pipeline = enc
+    p._check_pipeline_health()
+    cap.stop.assert_called_once()
+    enc.stop.assert_called_once()
+    assert p._pipeline_restart_count == 1
+
+
+def test_check_pipeline_health_does_not_restart_after_max_attempts():
+    p, _, _ = make_producer()
+    cap = MagicMock()
+    enc = MagicMock()
+    cap.pop_error.return_value = "error"
+    enc.pop_error.return_value = None
+    p._capture_pipeline = cap
+    p._encoding_pipeline = enc
+    p._pipeline_restart_count = 3  # already at max
+    p._check_pipeline_health()
+    cap.stop.assert_not_called()
+
+
+def test_prune_snapshots_keeps_last_n_files(tmp_path):
+    p, _, _ = make_producer()
+    p._output_directory = str(tmp_path)
+    for i in range(15):
+        (tmp_path / f"snapshot_{i:04d}.jpg").write_bytes(b"data")
+    p._prune_snapshots()
+    remaining = list(tmp_path.iterdir())
+    assert len(remaining) == 10
+
+
+def test_on_snapshot_prunes_old_snapshots(tmp_path):
+    p, _, _ = make_producer()
+    p._output_directory = str(tmp_path)
+    for i in range(10):
+        (tmp_path / f"snapshot_{i:04d}.jpg").write_bytes(b"old")
+    # Adding an 11th via _on_snapshot; pruning keeps only 10
+    p._on_snapshot(b"\xff\xd8\xff" + b"\x00" * 100)
+    assert len(list(tmp_path.iterdir())) == 10
+
+
+def test_run_exits_when_stream_name_empty():
+    with patch("kvs_producer.clientv2.GreengrassCoreIPCClientV2", return_value=MagicMock()), \
+         patch("kvs_producer.CapturePipeline"), \
+         patch("kvs_producer.EncodingPipeline"), \
+         patch.dict(os.environ, {"KVS_STREAM_NAME": ""}):
+        p = KvsProducer()
+    # shadow unavailable → DEFAULT_CONFIG with stream_name="" and KVS_STREAM_NAME=""
+    with pytest.raises(SystemExit):
+        p.run()
+
+
+def test_on_shadow_delta_restarts_capture_pipeline_on_snapshot_interval_change():
+    from shadow_config import KvsConfig
+    with patch("kvs_producer.clientv2.GreengrassCoreIPCClientV2", return_value=MagicMock()), \
+         patch("kvs_producer.CapturePipeline") as MockCap, \
+         patch("kvs_producer.EncodingPipeline") as MockEnc:
+        p = KvsProducer()
+        p._config = KvsConfig(
+            stream_name="s", frame_rate=15, resolution="640x480",
+            streaming_enabled=True, staleness_window_seconds=30.0,
+            snapshot_interval_seconds=10)
+        cap_instance = MagicMock()
+        enc_instance = MagicMock()
+        p._capture_pipeline = cap_instance
+        p._encoding_pipeline = enc_instance
+
+        event = MagicMock()
+        event.message.payload = json.dumps({
+            "state": {"snapshot_interval_seconds": 30}
+        }).encode()
+        p._on_shadow_delta(event)
+
+    cap_instance.stop.assert_called_once()
+    MockCap.assert_called()  # new CapturePipeline created
+    enc_instance.reconfigure.assert_not_called()  # encoding unchanged

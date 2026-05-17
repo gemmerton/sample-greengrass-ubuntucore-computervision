@@ -14,16 +14,25 @@ interface KvsPlayerProps {
 
 const MAX_RETRIES = 3;
 const RETRY_INTERVAL_MS = import.meta.env.VITEST ? 0 : 5000;
+// Proactively refresh HLS session URL this many ms before it expires (5 min)
+const URL_REFRESH_BEFORE_EXPIRY_MS = 5 * 60 * 1000;
 
 export const KvsPlayer: React.FC<KvsPlayerProps> = ({
   streamName, region, credentials, streamStatus,
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
+  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Stable ref so the HLS error callback can call the latest loadStream closure
+  const loadStreamRef = useRef<(() => Promise<void>) | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const loadStream = useCallback(async () => {
+    if (refreshTimerRef.current) {
+      clearTimeout(refreshTimerRef.current);
+      refreshTimerRef.current = null;
+    }
     if (!streamName) return;
     setLoading(true);
     setError(null);
@@ -31,8 +40,13 @@ export const KvsPlayer: React.FC<KvsPlayerProps> = ({
 
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       try {
-        const { url } = await getHlsStreamingUrl(
+        const { url, expiresAt } = await getHlsStreamingUrl(
           { streamName, region }, credentials);
+        const msUntilRefresh = expiresAt.getTime() - Date.now() - URL_REFRESH_BEFORE_EXPIRY_MS;
+        if (msUntilRefresh > 0) {
+          refreshTimerRef.current = setTimeout(
+            () => loadStreamRef.current?.(), msUntilRefresh);
+        }
         if (hlsRef.current) { hlsRef.current.destroy(); }
         const hls = new Hls();
         hlsRef.current = hls;
@@ -43,7 +57,7 @@ export const KvsPlayer: React.FC<KvsPlayerProps> = ({
           setLoading(false);
         });
         hls.on(Hls.Events.ERROR, (_: unknown, data: { fatal: boolean }) => {
-          if (data.fatal) { setError("Playback error"); }
+          if (data.fatal) { loadStreamRef.current?.(); }
         });
         return;
       } catch (e) {
@@ -57,10 +71,19 @@ export const KvsPlayer: React.FC<KvsPlayerProps> = ({
     setLoading(false);
   }, [streamName, region, credentials]);
 
+  // Keep loadStreamRef pointing at the latest loadStream closure so callbacks
+  // fired by hls.js or the refresh timer always call the current version.
+  useEffect(() => {
+    loadStreamRef.current = loadStream;
+  }, [loadStream]);
+
   useEffect(() => {
     if (!streamName) { setLoading(false); return; }
     loadStream();
-    return () => { hlsRef.current?.destroy(); };
+    return () => {
+      hlsRef.current?.destroy();
+      if (refreshTimerRef.current) { clearTimeout(refreshTimerRef.current); }
+    };
   }, [loadStream, streamName]);
 
   if (!streamName) {

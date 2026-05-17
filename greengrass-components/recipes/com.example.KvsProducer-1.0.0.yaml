@@ -87,6 +87,8 @@ Manifests:
           export GI_TYPELIB_PATH="${GST_KVS_MOUNT}/lib/girepository-1.0" && \
           export GST_PLUGIN_SCANNER="${GST_KVS_MOUNT}/lib/gstreamer-1.0/gst-plugin-scanner" && \
           export PYTHONPATH="${GST_KVS_MOUNT}/lib/python3:${PYTHONPATH:-}" && \
+          export GST_REGISTRY_PATH="{work:path}/gst-registry" && \
+          export WORK_PATH="{work:path}/snapshots" && \
           export AWS_DEFAULT_REGION="{configuration:/Region}" && \
           export KVS_STREAM_NAME="{configuration:/KvsStreamName}" && \
           export CAMERA_DEVICE="{configuration:/CameraDevice}" && \

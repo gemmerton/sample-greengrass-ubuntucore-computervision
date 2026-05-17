@@ -1,4 +1,4 @@
-import os, sys, json, time, logging, datetime, threading
+import os, sys, json, time, logging, datetime, threading, glob
 from dataclasses import replace
 import numpy as np
 import awsiot.greengrasscoreipc.clientv2 as clientv2
@@ -16,6 +16,9 @@ logging.basicConfig(level=logging.INFO)
 
 HEALTH_PUBLISH_INTERVAL = 30
 ERROR_THRESHOLD_SECONDS = 60
+MAX_PIPELINE_RESTARTS = 3
+PIPELINE_RESTART_INTERVAL_SECONDS = 30
+SNAPSHOT_RETENTION_COUNT = 10
 
 
 class KvsProducer:
@@ -24,7 +27,7 @@ class KvsProducer:
         self._stream_name = os.environ.get("KVS_STREAM_NAME", "")
         self._region = os.environ.get("AWS_DEFAULT_REGION", "us-east-1")
         self._camera_device = os.environ.get("CAMERA_DEVICE", "/dev/video0")
-        self._output_directory = os.environ.get("SNAP_USER_DATA", "/tmp/kvs-snapshots")
+        self._output_directory = os.environ.get("WORK_PATH", "/tmp/kvs-snapshots")
         os.makedirs(self._output_directory, exist_ok=True)
 
         self._ipc_client = clientv2.GreengrassCoreIPCClientV2()
@@ -38,11 +41,18 @@ class KvsProducer:
         self._encoding_pipeline = None
         self._last_frame_sent_time: float = 0.0
         self._last_health_publish: float = 0.0
+        self._pipeline_restart_count = 0
+        self._last_pipeline_restart: float = 0.0
 
     def run(self):
         self._config = self._shadow_mgr.read_config()
         if self._stream_name:
             self._config = replace(self._config, stream_name=self._stream_name)
+        if not self._config.stream_name:
+            logger.error(
+                "No KVS stream name configured; set KVS_STREAM_NAME env var "
+                "or stream_name in the kvs-config device shadow")
+            sys.exit(1)
         self._subscribe_to_detections()
         self._subscribe_to_shadow_delta()
         self._start_pipelines()
@@ -57,9 +67,33 @@ class KvsProducer:
                         and now - self._last_frame_sent_time > ERROR_THRESHOLD_SECONDS):
                     self._health_monitor.set_status("error")
                     self._health_monitor.publish_metrics()
+                self._check_pipeline_health()
                 time.sleep(1)
         except KeyboardInterrupt:
             self._stop_pipelines()
+
+    def _check_pipeline_health(self):
+        capture_err = (self._capture_pipeline.pop_error()
+                       if self._capture_pipeline else None)
+        encoding_err = (self._encoding_pipeline.pop_error()
+                        if self._encoding_pipeline else None)
+        if not (capture_err or encoding_err):
+            return
+        logger.error("Pipeline error: %s", capture_err or encoding_err)
+        self._health_monitor.set_status("error")
+        now = time.time()
+        if self._pipeline_restart_count >= MAX_PIPELINE_RESTARTS:
+            logger.error("Max pipeline restarts (%d) reached, giving up",
+                         MAX_PIPELINE_RESTARTS)
+            return
+        if now - self._last_pipeline_restart < PIPELINE_RESTART_INTERVAL_SECONDS:
+            return
+        logger.info("Restarting pipelines (attempt %d/%d)",
+                    self._pipeline_restart_count + 1, MAX_PIPELINE_RESTARTS)
+        self._stop_pipelines()
+        self._start_pipelines()
+        self._pipeline_restart_count += 1
+        self._last_pipeline_restart = now
 
     def _start_pipelines(self):
         w, h = map(int, self._config.resolution.split("x"))
@@ -99,6 +133,7 @@ class KvsProducer:
         filepath = os.path.join(self._output_directory, f"snapshot_{ts}.jpg")
         with open(filepath, "wb") as f:
             f.write(jpeg_bytes)
+        self._prune_snapshots()
         msg = {"image_path": filepath,
                "timestamp": datetime.datetime.now().isoformat()}
         try:
@@ -107,6 +142,15 @@ class KvsProducer:
                 publish_message=PublishMessage(json_message=JsonMessage(message=msg)))
         except Exception as e:
             logger.warning("Failed to publish snapshot: %s", e)
+
+    def _prune_snapshots(self):
+        snapshots = sorted(
+            glob.glob(os.path.join(self._output_directory, "snapshot_*.jpg")))
+        for old in snapshots[:-SNAPSHOT_RETENTION_COUNT]:
+            try:
+                os.remove(old)
+            except OSError:
+                pass
 
     def _subscribe_to_detections(self):
         try:
@@ -131,7 +175,9 @@ class KvsProducer:
                         ymax=d["box"]["ymax"], xmax=d["box"]["xmax"]))
                 for d in payload.get("detections", [])
             ]
-            self._annotator.update_detections(detections, time.time())
+            with self._state_lock:
+                annotator = self._annotator
+            annotator.update_detections(detections, time.time())
         except Exception as e:
             logger.warning("Failed to parse detection message: %s", e)
 
@@ -163,11 +209,23 @@ class KvsProducer:
                 self._config = new_config
                 self._annotator = FrameAnnotator(
                     staleness_window_seconds=new_config.staleness_window_seconds)
-            needs_restart = (new_config.frame_rate != old_config.frame_rate
-                             or new_config.resolution != old_config.resolution)
-            if needs_restart and self._encoding_pipeline:
+            needs_encoding_restart = (new_config.frame_rate != old_config.frame_rate
+                                      or new_config.resolution != old_config.resolution)
+            needs_capture_restart = (needs_encoding_restart
+                                     or new_config.snapshot_interval_seconds
+                                     != old_config.snapshot_interval_seconds)
+            if needs_capture_restart:
                 w, h = map(int, new_config.resolution.split("x"))
-                self._encoding_pipeline.reconfigure(new_config.frame_rate, w, h)
+                if self._capture_pipeline:
+                    self._capture_pipeline.stop()
+                self._capture_pipeline = CapturePipeline(
+                    self._camera_device, new_config.frame_rate, w, h,
+                    new_config.snapshot_interval_seconds)
+                self._capture_pipeline.set_on_raw_frame(self._on_raw_frame)
+                self._capture_pipeline.set_on_snapshot(self._on_snapshot)
+                self._capture_pipeline.start()
+                if needs_encoding_restart and self._encoding_pipeline:
+                    self._encoding_pipeline.reconfigure(new_config.frame_rate, w, h)
             status = "streaming" if new_config.streaming_enabled else "stopped"
             self._shadow_mgr.report_state(new_config, status)
         except Exception as e:

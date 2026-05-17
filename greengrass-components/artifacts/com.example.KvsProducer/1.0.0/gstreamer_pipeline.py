@@ -81,6 +81,15 @@ class CapturePipeline:
             return False
         return self._pipeline.get_state(0)[1] in (Gst.State.PLAYING, Gst.State.PAUSED)
 
+    def pop_error(self) -> "str | None":
+        if not self._pipeline:
+            return None
+        msg = self._pipeline.get_bus().timed_pop_filtered(0, Gst.MessageType.ERROR)
+        if msg:
+            err, debug = msg.parse_error()
+            return f"{err.message}: {debug}"
+        return None
+
 
 class EncodingPipeline:
     """appsrc -> videoconvert -> x264enc -> h264parse -> kvssink.
@@ -142,3 +151,12 @@ class EncodingPipeline:
         self._width = width
         self._height = height
         self.start()
+
+    def pop_error(self) -> "str | None":
+        if not self._pipeline:
+            return None
+        msg = self._pipeline.get_bus().timed_pop_filtered(0, Gst.MessageType.ERROR)
+        if msg:
+            err, debug = msg.parse_error()
+            return f"{err.message}: {debug}"
+        return None

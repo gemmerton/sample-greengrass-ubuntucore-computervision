@@ -97,3 +97,30 @@ def test_encoding_pipeline_reconfigure_restarts_with_new_params():
     assert p._framerate == 10
     assert p._width == 1280
     assert p._height == 720
+
+
+def test_capture_pipeline_pop_error_returns_none_before_start():
+    p = CapturePipeline("/dev/video0", 15, 640, 480, 10)
+    assert p.pop_error() is None
+
+
+def test_encoding_pipeline_pop_error_returns_none_when_no_error():
+    p = EncodingPipeline("s", "us-east-1", 15, 640, 480)
+    p.start()
+    mock_pipeline = gst_mock.parse_launch.return_value
+    mock_pipeline.get_bus.return_value.timed_pop_filtered.return_value = None
+    assert p.pop_error() is None
+
+
+def test_encoding_pipeline_pop_error_returns_message_string_on_error():
+    p = EncodingPipeline("s", "us-east-1", 15, 640, 480)
+    p.start()
+    mock_pipeline = gst_mock.parse_launch.return_value
+    mock_err = MagicMock()
+    mock_err.message = "KVS credential error"
+    mock_msg = MagicMock()
+    mock_msg.parse_error.return_value = (mock_err, "debug details")
+    mock_pipeline.get_bus.return_value.timed_pop_filtered.return_value = mock_msg
+    result = p.pop_error()
+    assert result is not None
+    assert "KVS credential error" in result
