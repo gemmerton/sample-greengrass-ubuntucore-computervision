@@ -71,16 +71,19 @@ Manifests:
         Timeout: 300
         Script: |
           /bin/bash -c 'set -e && \
+          echo "=== KvsProducer Install Diagnostic ===" && \
+          echo "User: $(id)" && \
+          echo "CWD: $(pwd)" && \
+          echo "work:path: {work:path}" && \
+          echo "work:path ls:" && ls -la {work:path}/ && \
+          echo "Test {work:path} write:" && (touch {work:path}/write-test && echo WRITABLE && rm {work:path}/write-test || echo NOT_WRITABLE) && \
+          echo "Test /tmp write:" && (touch /tmp/kvs-write-test-$$ && echo WRITABLE && rm /tmp/kvs-write-test-$$ || echo NOT_WRITABLE) && \
+          echo "=== End Diagnostic ===" && \
           python3 -m venv --without-pip venv/ && \
           source venv/bin/activate && \
           python3 {artifacts:path}/get-pip.py && \
           python3 -m pip install -r {artifacts:path}/requirements.txt && \
-          deactivate && \
-          mkdir -p -m 777 {work:path}/run && \
-          mkdir -p -m 777 {work:path}/gst-registry && \
-          mkdir -p -m 777 {work:path}/snapshots && \
-          cp {artifacts:path}/kvs_log_configuration {work:path}/kvs_log_configuration && \
-          chmod 644 {work:path}/kvs_log_configuration'
+          deactivate'
       Run:
         Script: |
           /bin/bash -c 'set -e && \
