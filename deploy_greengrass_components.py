@@ -278,14 +278,15 @@ class GreengrassDeployer:
         """Create a Greengrass deployment to the specified IoT Thing."""
         deployment_name = f"deployment-{thing_name}"
 
-        # Build component configuration from the supplied custom components
+        # Build component configuration from the supplied custom components.
+        # No configurationUpdate: let the recipe DefaultConfiguration take effect.
+        # Using reset:[''] (root reset) clears lifecycle scripts from the config
+        # tree for newly-added components before the recipe content is restored,
+        # causing GenericExternalService to see no Run script ("Nothing done").
         component_config = {}
         for component in components:
             component_config[component['componentName']] = {
                 'componentVersion': component['componentVersion'],
-                'configurationUpdate': {
-                    'reset': ['']
-                }
             }
 
         # Include AWS-managed system components required by KvsProducer and ModelManagerCore.
