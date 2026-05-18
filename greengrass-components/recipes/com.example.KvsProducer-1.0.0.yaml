@@ -85,15 +85,15 @@ Manifests:
           export GI_TYPELIB_PATH="${GST_KVS_MOUNT}/lib/girepository-1.0" && \
           export GST_PLUGIN_SCANNER="${GST_KVS_MOUNT}/lib/gstreamer-1.0/gst-plugin-scanner" && \
           export PYTHONPATH="${GST_KVS_MOUNT}/lib/python3:${PYTHONPATH:-}" && \
-          export GST_REGISTRY_PATH="{work:path}/gst-registry" && \
-          export WORK_PATH="{work:path}/snapshots" && \
+          export GST_REGISTRY_PATH="{work:path}/kvs/gst-registry" && \
+          export WORK_PATH="{work:path}/kvs/snapshots" && \
           export AWS_DEFAULT_REGION="{configuration:/Region}" && \
           export KVS_STREAM_NAME="{configuration:/KvsStreamName}" && \
           export CAMERA_DEVICE="{configuration:/CameraDevice}" && \
           export AWS_IOT_THING_NAME="{iot:thingName}" && \
-          mkdir -p {work:path}/kvs && \
-          cp {artifacts:path}/kvs_log_configuration {work:path}/kvs_log_configuration && \
-          cd {work:path}/kvs && \
+          mkdir -p {work:path}/kvs/run && \
+          cp {artifacts:path}/kvs_log_configuration {work:path}/kvs/kvs_log_configuration && \
+          cd {work:path}/kvs/run && \
           source {work:path}/venv/bin/activate && \
           python3 {artifacts:path}/kvs_producer.py'
     Artifacts:
