@@ -93,8 +93,10 @@ Manifests:
           export KVS_STREAM_NAME="{configuration:/KvsStreamName}" && \
           export CAMERA_DEVICE="{configuration:/CameraDevice}" && \
           export AWS_IOT_THING_NAME="{iot:thingName}" && \
-          cp {artifacts:path}/kvs_log_configuration {work:path}/../kvs_log_configuration && \
-          source venv/bin/activate && \
+          mkdir -p {work:path}/kvs && \
+          cp {artifacts:path}/kvs_log_configuration {work:path}/kvs_log_configuration && \
+          cd {work:path}/kvs && \
+          source {work:path}/venv/bin/activate && \
           python3 {artifacts:path}/kvs_producer.py'
     Artifacts:
       - Uri: kvs_producer.py
