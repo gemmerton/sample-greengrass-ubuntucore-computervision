@@ -8,9 +8,6 @@ ComponentDescription: >
   time-window model, and publishes inference snapshots to camera/images.
 ComponentPublisher: AWS
 ComponentDependencies:
-  com.example.CameraHandlerCore:
-    VersionRequirement: '^1.0.0'
-    DependencyType: SOFT
   com.example.DetectionHandler:
     VersionRequirement: '^1.0.0'
     DependencyType: SOFT
