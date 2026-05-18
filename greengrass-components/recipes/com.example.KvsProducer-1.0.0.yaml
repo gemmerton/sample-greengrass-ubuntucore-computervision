@@ -22,8 +22,8 @@ ComponentDependencies:
     DependencyType: HARD
 ComponentConfiguration:
   DefaultConfiguration:
-    KvsStreamName: "ubuntu-core-gg-demo-stream"
-    Region: "us-east-1"
+    KvsStreamName: "ge-demo-stream"
+    Region: "eu-west-1"
     CameraDevice: "/dev/video0"
     # Path where the kvs-gstreamer snap content interface is mounted.
     #
