@@ -109,7 +109,9 @@ class EncodingPipeline:
         self._appsrc = None
 
     def start(self) -> None:
+        logger.info("EncodingPipeline.start: calling Gst.init()")
         Gst.init(None)
+        logger.info("EncodingPipeline.start: Gst.init() done")
         pipeline_str = (
             f"appsrc name=src format=time is-live=true "
             f"caps=video/x-raw,format=BGR,width={self._width},"
@@ -118,9 +120,12 @@ class EncodingPipeline:
             f"! h264parse ! kvssink stream-name={self._stream_name} "
             f"aws-region={self._region}"
         )
+        logger.info("EncodingPipeline.start: calling Gst.parse_launch()")
         self._pipeline = Gst.parse_launch(pipeline_str)
+        logger.info("EncodingPipeline.start: Gst.parse_launch() done, setting PLAYING")
         self._appsrc = self._pipeline.get_by_name("src")
         self._pipeline.set_state(Gst.State.PLAYING)
+        logger.info("EncodingPipeline.start: set_state(PLAYING) returned")
 
     def push_frame(self, frame: np.ndarray) -> bool:
         if not self.is_healthy():

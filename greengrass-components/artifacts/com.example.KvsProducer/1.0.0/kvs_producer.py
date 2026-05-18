@@ -1,3 +1,4 @@
+import faulthandler; faulthandler.enable()
 import os, sys, json, time, logging, datetime, threading, glob
 from dataclasses import replace
 import numpy as np
@@ -97,16 +98,23 @@ class KvsProducer:
 
     def _start_pipelines(self):
         w, h = map(int, self._config.resolution.split("x"))
+        logger.info("Creating capture pipeline: device=%s %dx%d@%d",
+                    self._camera_device, w, h, self._config.frame_rate)
         self._capture_pipeline = CapturePipeline(
             self._camera_device, self._config.frame_rate, w, h,
             self._config.snapshot_interval_seconds)
         self._capture_pipeline.set_on_raw_frame(self._on_raw_frame)
         self._capture_pipeline.set_on_snapshot(self._on_snapshot)
+        logger.info("Creating encoding pipeline: stream=%s region=%s",
+                    self._config.stream_name, self._region)
         self._encoding_pipeline = EncodingPipeline(
             self._config.stream_name, self._region,
             self._config.frame_rate, w, h)
+        logger.info("Starting encoding pipeline (kvssink)...")
         self._encoding_pipeline.start()
+        logger.info("Encoding pipeline started, starting capture pipeline...")
         self._capture_pipeline.start()
+        logger.info("Both pipelines started")
 
     def _stop_pipelines(self):
         if self._capture_pipeline:
