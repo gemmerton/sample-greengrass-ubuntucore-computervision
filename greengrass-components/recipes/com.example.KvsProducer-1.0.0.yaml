@@ -93,6 +93,7 @@ Manifests:
           export KVS_STREAM_NAME="{configuration:/KvsStreamName}" && \
           export CAMERA_DEVICE="{configuration:/CameraDevice}" && \
           export AWS_IOT_THING_NAME="{iot:thingName}" && \
+          cp {artifacts:path}/kvs_log_configuration {work:path}/../kvs_log_configuration && \
           source venv/bin/activate && \
           python3 {artifacts:path}/kvs_producer.py'
     Artifacts:
@@ -109,4 +110,6 @@ Manifests:
       - Uri: requirements.txt
         Unarchive: NONE
       - Uri: get-pip.py
+        Unarchive: NONE
+      - Uri: kvs_log_configuration
         Unarchive: NONE

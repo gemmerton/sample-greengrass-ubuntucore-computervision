@@ -1,0 +1,4 @@
+log4cplus.rootLogger=WARN, consoleAppender
+log4cplus.appender.consoleAppender=log4cplus::ConsoleAppender
+log4cplus.appender.consoleAppender.layout=log4cplus::PatternLayout
+log4cplus.appender.consoleAppender.layout.ConversionPattern=%d{%H:%M:%S.%q} %-5p %c - %m%n

@@ -95,7 +95,8 @@ parts:
       usr/lib/x86_64-linux-gnu/libgstbadaudio-1.0.so*: gstreamer-kvs/lib/
       usr/lib/x86_64-linux-gnu/libgstcontroller-1.0.so*: gstreamer-kvs/lib/
       usr/lib/x86_64-linux-gnu/libgstcheck-1.0.so*: gstreamer-kvs/lib/
-      usr/lib/x86_64-linux-gnu/libgstgl-1.0.so*: gstreamer-kvs/lib/
+      # libgstgl-1.0.so intentionally omitted: OpenGL not needed for headless
+      # v4l2→encode→kvssink pipeline; its EGL/GL/X11/Wayland deps are not in core24
       # ── GLib / GObject / GIO (GStreamer runtime foundation) ──
       usr/lib/x86_64-linux-gnu/libglib-2.0.so*: gstreamer-kvs/lib/
       usr/lib/x86_64-linux-gnu/libgobject-2.0.so*: gstreamer-kvs/lib/
@@ -108,9 +109,11 @@ parts:
       usr/lib/x86_64-linux-gnu/libunwind.so*: gstreamer-kvs/lib/
       usr/lib/x86_64-linux-gnu/libunwind-x86_64.so*: gstreamer-kvs/lib/
       # libdw: transitive dep of libunwind8 (DWARF library)
-      usr/lib/x86_64-linux-gnu/libdw.so*: gstreamer-kvs/lib/
-      # libelf: transitive dep of libdw1 (ELF access library)
-      usr/lib/x86_64-linux-gnu/libelf.so*: gstreamer-kvs/lib/
+      # elfutils uses libdw-0.190.so naming (dash-version), not libdw.so.0.190,
+      # so the glob must be libdw*.so* to capture both the symlink and real file
+      usr/lib/x86_64-linux-gnu/libdw*.so*: gstreamer-kvs/lib/
+      # libelf: same dash-version naming convention as libdw
+      usr/lib/x86_64-linux-gnu/libelf*.so*: gstreamer-kvs/lib/
       # libgstcodecparsers: needed by h264parse (from libgstreamer-plugins-bad1.0-0)
       usr/lib/x86_64-linux-gnu/libgstcodecparsers-1.0.so*: gstreamer-kvs/lib/
       # libx264: needed by x264enc
@@ -162,6 +165,14 @@ parts:
       - libssl3
       - libcurl4t64
       - liblog4cplus-2.0.5t64
+      # libcurl transitive deps not present in core24
+      - libnghttp2-14
+      - librtmp1
+      - libssh-4
+      - libpsl5t64
+      # libldap, liblber, libgcrypt, libgpg-error, libsasl2 are auto-staged
+      # as transitive deps of libcurl4t64; organize entries below move them
+      # into gstreamer-kvs/lib/ without needing explicit stage-packages entries
     override-build: |
       set -e
 
@@ -195,10 +206,12 @@ parts:
         exit 1
       fi
 
-      # Install KVS SDK shared libraries (libKinesisVideoProducer, etc.)
+      # Install KVS SDK shared libraries (libKinesisVideoProducer, libcproducer, etc.)
+      # No -maxdepth 1: libcproducer.so and other C-SDK libs land in subdirectories
       install -d "${CRAFT_PART_INSTALL}/gstreamer-kvs/lib"
-      find "${KVS_BUILD}" -maxdepth 1 -name "*.so*" \
+      find "${KVS_BUILD}" -name "*.so*" \
         ! -name "libgstkvssink.so" \
+        ! -path "*/CMakeFiles/*" \
         -exec install {} "${CRAFT_PART_INSTALL}/gstreamer-kvs/lib/" \;
 
     organize:
@@ -207,6 +220,17 @@ parts:
       usr/lib/x86_64-linux-gnu/libcrypto.so*: gstreamer-kvs/lib/
       usr/lib/x86_64-linux-gnu/libcurl.so*: gstreamer-kvs/lib/
       usr/lib/x86_64-linux-gnu/liblog4cplus*.so*: gstreamer-kvs/lib/
+      # libcurl transitive deps
+      usr/lib/x86_64-linux-gnu/libnghttp2.so*: gstreamer-kvs/lib/
+      usr/lib/x86_64-linux-gnu/librtmp.so*: gstreamer-kvs/lib/
+      usr/lib/x86_64-linux-gnu/libssh.so*: gstreamer-kvs/lib/
+      usr/lib/x86_64-linux-gnu/libpsl.so*: gstreamer-kvs/lib/
+      usr/lib/x86_64-linux-gnu/libldap*.so*: gstreamer-kvs/lib/
+      usr/lib/x86_64-linux-gnu/liblber*.so*: gstreamer-kvs/lib/
+      # transitive deps of curl deps
+      usr/lib/x86_64-linux-gnu/libgcrypt.so*: gstreamer-kvs/lib/
+      usr/lib/x86_64-linux-gnu/libgpg-error.so*: gstreamer-kvs/lib/
+      usr/lib/x86_64-linux-gnu/libsasl2*.so*: gstreamer-kvs/lib/
 
 # ── Content interface slot ────────────────────────────────────────────────────
 # The aws-iot-greengrass snap must declare a matching plug:
