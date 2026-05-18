@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Skill(superpowers:systematic-debugging)",
+      "Bash(git -C \"C:\\\\Git\\\\sample-greengrass-ubuntucore-computervision\" show 505d675 -- kvs-gstreamer-snap/snap/snapcraft.yaml)",
+      "WebFetch(domain:canonical.com)",
+      "WebFetch(domain:assets.ubuntu.com)",
+      "Bash(git *)",
+      "WebFetch(domain:ubuntu.com)",
+      "WebFetch(domain:aws.amazon.com)"
+    ]
+  }
+}
