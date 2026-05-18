@@ -1,10 +1,43 @@
 import gi
 gi.require_version("Gst", "1.0")
 from gi.repository import Gst
-import logging, numpy as np, time
+import json, logging, os, sys, urllib.request, numpy as np, time
 from typing import Callable, Optional
 
 logger = logging.getLogger(__name__)
+
+
+def _fetch_tes_credentials():
+    """Fetch temporary credentials from Greengrass TES and export as env vars.
+
+    The KVS C Producer SDK reads AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY /
+    AWS_SESSION_TOKEN from the environment.  Greengrass TES provides them via
+    AWS_CONTAINER_CREDENTIALS_FULL_URI, which the KVS SDK does not support
+    natively, so we fetch them here before starting kvssink.
+    """
+    uri = os.environ.get("AWS_CONTAINER_CREDENTIALS_FULL_URI", "")
+    if not uri:
+        rel = os.environ.get("AWS_CONTAINER_CREDENTIALS_RELATIVE_URI", "")
+        if rel:
+            uri = f"http://127.0.0.1:2113{rel}"
+    if not uri:
+        print("TES: no credentials URI found in environment", file=sys.stderr, flush=True)
+        return False
+    token = os.environ.get("AWS_CONTAINER_AUTHORIZATION_TOKEN", "")
+    req = urllib.request.Request(uri)
+    if token:
+        req.add_header("Authorization", token)
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            creds = json.loads(resp.read().decode())
+        os.environ["AWS_ACCESS_KEY_ID"] = creds["AccessKeyId"]
+        os.environ["AWS_SECRET_ACCESS_KEY"] = creds["SecretAccessKey"]
+        os.environ["AWS_SESSION_TOKEN"] = creds.get("Token", creds.get("SessionToken", ""))
+        print("TES: credentials fetched OK", file=sys.stderr, flush=True)
+        return True
+    except Exception as exc:
+        print(f"TES: credential fetch failed: {exc}", file=sys.stderr, flush=True)
+        return False
 
 
 class CapturePipeline:
@@ -109,9 +142,10 @@ class EncodingPipeline:
         self._appsrc = None
 
     def start(self) -> None:
-        logger.info("EncodingPipeline.start: calling Gst.init()")
+        print("EncodingPipeline.start: calling Gst.init()", file=sys.stderr, flush=True)
         Gst.init(None)
-        logger.info("EncodingPipeline.start: Gst.init() done")
+        print("EncodingPipeline.start: Gst.init() done", file=sys.stderr, flush=True)
+        _fetch_tes_credentials()
         pipeline_str = (
             f"appsrc name=src format=time is-live=true "
             f"caps=video/x-raw,format=BGR,width={self._width},"
@@ -120,12 +154,12 @@ class EncodingPipeline:
             f"! h264parse ! kvssink stream-name={self._stream_name} "
             f"aws-region={self._region}"
         )
-        logger.info("EncodingPipeline.start: calling Gst.parse_launch()")
+        print("EncodingPipeline.start: calling Gst.parse_launch()", file=sys.stderr, flush=True)
         self._pipeline = Gst.parse_launch(pipeline_str)
-        logger.info("EncodingPipeline.start: Gst.parse_launch() done, setting PLAYING")
+        print("EncodingPipeline.start: Gst.parse_launch() done, setting PLAYING", file=sys.stderr, flush=True)
         self._appsrc = self._pipeline.get_by_name("src")
         self._pipeline.set_state(Gst.State.PLAYING)
-        logger.info("EncodingPipeline.start: set_state(PLAYING) returned")
+        print("EncodingPipeline.start: set_state(PLAYING) returned", file=sys.stderr, flush=True)
 
     def push_frame(self, frame: np.ndarray) -> bool:
         if not self.is_healthy():

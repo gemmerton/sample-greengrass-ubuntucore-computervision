@@ -241,6 +241,13 @@ class KvsProducer:
 
 
 def main():
+    for var in ["AWS_ACCESS_KEY_ID", "AWS_CONTAINER_CREDENTIALS_FULL_URI",
+                "AWS_CONTAINER_CREDENTIALS_RELATIVE_URI", "AWS_CONTAINER_AUTHORIZATION_TOKEN",
+                "AWS_DEFAULT_REGION"]:
+        val = os.environ.get(var, "UNSET")
+        if var in ("AWS_ACCESS_KEY_ID",) and val != "UNSET":
+            val = val[:4] + "***"
+        print(f"STARTUP ENV: {var}={val}", file=sys.stderr, flush=True)
     try:
         KvsProducer().run()
     except Exception as e:
