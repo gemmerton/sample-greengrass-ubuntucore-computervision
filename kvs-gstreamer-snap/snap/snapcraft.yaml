@@ -63,6 +63,21 @@ parts:
       - liborc-0.4-0
       # Stack unwinding — transitive dep of libglib-2.0, not in core24
       - libunwind8
+      # DWARF library — transitive dep of libunwind8, not in core24
+      - libdw1
+      # ELF access library — transitive dep of libdw1, not in core24
+      - libelf1
+      # Bad-plugins support libraries: libgstcodecparsers (needed by h264parse)
+      - libgstreamer-plugins-bad1.0-0
+      # H.264 encoder library (needed by x264enc)
+      - libx264-164
+      # JPEG library (needed by jpegenc for snapshots and by v4l2src)
+      - libjpeg-turbo8
+      # GUDev (needed by v4l2src for device enumeration)
+      - libgudev-1.0-0
+      # V4L2 user-space library and format converter (needed by v4l2src)
+      - libv4l-0t64
+      - libv4lconvert0t64
     organize:
       # ── GStreamer core and plugin support libraries ──
       usr/lib/x86_64-linux-gnu/libgstreamer-1.0.so*: gstreamer-kvs/lib/
@@ -92,6 +107,21 @@ parts:
       # libunwind: transitive dep of libglib-2.0 for stack backtraces
       usr/lib/x86_64-linux-gnu/libunwind.so*: gstreamer-kvs/lib/
       usr/lib/x86_64-linux-gnu/libunwind-x86_64.so*: gstreamer-kvs/lib/
+      # libdw: transitive dep of libunwind8 (DWARF library)
+      usr/lib/x86_64-linux-gnu/libdw.so*: gstreamer-kvs/lib/
+      # libelf: transitive dep of libdw1 (ELF access library)
+      usr/lib/x86_64-linux-gnu/libelf.so*: gstreamer-kvs/lib/
+      # libgstcodecparsers: needed by h264parse (from libgstreamer-plugins-bad1.0-0)
+      usr/lib/x86_64-linux-gnu/libgstcodecparsers-1.0.so*: gstreamer-kvs/lib/
+      # libx264: needed by x264enc
+      usr/lib/x86_64-linux-gnu/libx264.so*: gstreamer-kvs/lib/
+      # libjpeg: needed by jpegenc (snapshots) and v4l2src
+      usr/lib/x86_64-linux-gnu/libjpeg.so*: gstreamer-kvs/lib/
+      # libgudev: needed by v4l2src for device enumeration
+      usr/lib/x86_64-linux-gnu/libgudev-1.0.so*: gstreamer-kvs/lib/
+      # libv4l2 + libv4lconvert: needed by v4l2src
+      usr/lib/x86_64-linux-gnu/libv4l2.so*: gstreamer-kvs/lib/
+      usr/lib/x86_64-linux-gnu/libv4lconvert.so*: gstreamer-kvs/lib/
       # ── GStreamer plugins directory (all staged plugins go here) ──
       usr/lib/x86_64-linux-gnu/gstreamer-1.0/: gstreamer-kvs/lib/gstreamer-1.0/
       # ── gst-plugin-scanner: subprocess used when building plugin registry ──
