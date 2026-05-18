@@ -64,7 +64,8 @@ ComponentConfiguration:
             - '$aws/things/*/shadow/name/kvs-config/update/delta'
 Manifests:
   - Platform:
-      os: linux
+      os: all
+      runtime: '*'
     Lifecycle:
       Install:
         Timeout: 300

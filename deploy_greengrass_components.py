@@ -304,6 +304,24 @@ class GreengrassDeployer:
                 else:
                     print(f"Warning: skipping {name} — could not resolve version")
 
+        # Configure ShadowManager to sync named shadows used by KvsProducer and
+        # ModelManagerCore from IoT Core to the local shadow store. Without this,
+        # GetThingShadow IPC calls return ResourceNotFoundError for shadows that
+        # were created via the console or cloud-side APIs.
+        if 'aws.greengrass.ShadowManager' in component_config:
+            import json as _json
+            sync_config = _json.dumps({
+                "synchronize": {
+                    "coreThing": {
+                        "namedShadows": ["kvs-config", "model-config"]
+                    }
+                }
+            })
+            component_config['aws.greengrass.ShadowManager']['configurationUpdate'] = {
+                'merge': sync_config
+            }
+            print("Configured ShadowManager to sync named shadows: kvs-config, model-config")
+
         try:
             response = self.greengrass_client.create_deployment(
                 targetArn=f"arn:aws:iot:{self.aws_region}:{self.account_id}:thing/{thing_name}",
