@@ -147,12 +147,16 @@ class EncodingPipeline:
         Gst.init(None)
         print("EncodingPipeline.start: Gst.init() done", file=sys.stderr, flush=True)
         _fetch_tes_credentials()
+        # do-timestamp=true: auto-assigns PTS to every pushed buffer (required by kvssink)
+        # key-int-max: forces a keyframe every 2s so the player can start mid-stream
+        # config-interval=-1: repeats SPS/PPS before every keyframe for player init
         pipeline_str = (
-            f"appsrc name=src format=time is-live=true "
+            f"appsrc name=src format=time is-live=true do-timestamp=true "
             f"caps=video/x-raw,format=BGR,width={self._width},"
             f"height={self._height},framerate={self._framerate}/1 "
-            f"! videoconvert ! x264enc tune=zerolatency "
-            f"! h264parse ! kvssink stream-name={self._stream_name} "
+            f"! videoconvert ! x264enc tune=zerolatency key-int-max={self._framerate * 2} "
+            f"! h264parse config-interval=-1 "
+            f"! kvssink stream-name={self._stream_name} "
             f"aws-region={self._region}"
         )
         print("EncodingPipeline.start: calling Gst.parse_launch()", file=sys.stderr, flush=True)
