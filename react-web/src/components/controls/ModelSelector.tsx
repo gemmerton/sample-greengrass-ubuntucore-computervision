@@ -80,7 +80,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
     };
 
     setLoadState('loading');
-    loadShadow();
+    loadShadow(1);
 
     return () => { cancelled = true; };
   }, [thingName, credentials, region]);

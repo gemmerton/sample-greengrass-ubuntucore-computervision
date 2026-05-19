@@ -7,7 +7,9 @@
       "WebFetch(domain:assets.ubuntu.com)",
       "Bash(git *)",
       "WebFetch(domain:ubuntu.com)",
-      "WebFetch(domain:aws.amazon.com)"
+      "WebFetch(domain:aws.amazon.com)",
+      "Bash(ssh-minipc *)",
+      "Bash(ssh *)"
     ]
   }
 }

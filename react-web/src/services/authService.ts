@@ -296,7 +296,7 @@ export class AuthService {
           } else {
             console.warn('Could not get Cognito Identity ID for IoT policy attachment');
           }
-        } catch (iotError) {
+        } catch (iotError: any) {
           console.error('IoT policy attachment failed:', iotError);
           console.error('IoT policy attachment error details:', {
             name: iotError?.name,
