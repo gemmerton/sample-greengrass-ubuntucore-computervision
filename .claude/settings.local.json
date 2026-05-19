@@ -15,7 +15,16 @@
       "WebFetch(domain:canonical.com)",
       "WebFetch(domain:ubuntu.com)",
       "WebFetch(domain:aws.amazon.com)",
-      "WebFetch(domain:snapcraft.io)"
+      "WebFetch(domain:snapcraft.io)",
+      "Bash(.venv/bin/pip install *)",
+      "Bash(brew list *)",
+      "Bash(/Users/gemmerto/local-dev/Git-Github/sample-greengrass-ubuntucore-computervision/.venv/bin/pip install *)",
+      "Bash(mksquashfs model-faster-rcnn *)",
+      "Bash(mksquashfs model-efficientnet *)",
+      "Bash(mkdir -p /tmp/comp-inspect)",
+      "Bash(unsquashfs -l /tmp/model-build/faster-rcnn/model.xml)",
+      "Bash(unsquashfs -l /tmp/comp-inspect/ovms-cpu.comp)",
+      "Bash(unsquashfs -cat /tmp/comp-inspect/ovms-cpu.comp meta/component.yaml)"
     ]
   }
 }
