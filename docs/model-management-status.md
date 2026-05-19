@@ -82,9 +82,13 @@ should be replaced with production models.
    Likely a named-shadow sync configuration issue in the Greengrass Shadow Manager
    component config (needs `synchronize` config for the `model-config` shadow).
 
-2. **OVMS service inactive**: The `ovms-engine.server` snap service is not running.
-   The engine component (`ovms-cpu`) needs to be installed and `modelctl use-engine`
-   needs to complete successfully for the server to start.
+2. **OVMS service won't start - missing shared libraries**: The `ovms-cpu` component
+   is now installed and `modelctl use-engine intel-cpu` succeeds, but the OVMS binary
+   fails with: `libpython3.10.so.1.0: cannot open shared object file`. The `.comp`
+   file doesn't include all required shared libraries. The snap's `server.sh` calls
+   `modelctl run` which calls the OVMS binary at `$SNAP_COMPONENTS/ovms-cpu/usr/bin/ovms`.
+   Fix: rebuild the `ovms-cpu` component with all runtime dependencies staged (or
+   add the missing libs to the snap base).
 
 3. **Multiple component revisions accumulating**: Each sideload creates a new
    revision under `/snap/ovms-engine/components/mnt/model-faster-rcnn/x<N>`.
@@ -94,12 +98,18 @@ should be replaced with production models.
 
 ### Immediate (get OVMS serving inference)
 
-1. **Start OVMS service**: Install the `ovms-cpu` engine component (it's in S3)
-   and run `modelctl use-engine --auto` to initialise the server. Alternatively,
-   start OVMS directly:
-   ```bash
-   sudo snap start ovms-engine.server
-   ```
+1. **Fix ovms-cpu shared libraries**: The OVMS binary needs `libpython3.10.so.1.0`
+   (and likely other libs). Options:
+   - Rebuild the ovms-cpu component to stage all required shared libraries
+     (extract from the OVMS Docker image: `docker cp ovms-tmp:/ovms/lib/ ./lib/`)
+   - Add `stage-packages: [libpython3.10]` in the snapcraft.yaml ovms part
+   - Or use the OVMS binary from a compatible Docker image that has static linking
+   
+   The ovms-cpu component is already installed on device (`snap install --dangerous`
+   succeeded) and `modelctl use-engine intel-cpu` works. The `modelctl` config
+   values (`grpc.port`, `http.port`, `config.poll_seconds`) are not persisting -
+   they need to be set before the server script can run. Run the install hook
+   manually or write the config file directly.
 
 2. **Fix shadow sync**: Add `model-config` to the Shadow Manager's `synchronize`
    configuration so reported state syncs to the cloud. Check the
