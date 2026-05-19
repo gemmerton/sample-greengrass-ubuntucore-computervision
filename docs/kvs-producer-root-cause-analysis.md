@@ -1,8 +1,10 @@
 # KVSProducer Component — Root Cause Analysis and Fix Plan
 
-**Date:** 2026-05-18  
-**Status:** Analysis complete — fixes not yet applied (read-only session)  
+**Date:** 2026-05-18 (analysis) / 2026-05-19 (fixes applied)  
+**Status:** ✅ RESOLVED — live H.264 video streaming to KVS confirmed working as of 2026-05-19  
 **Scope:** Why `com.example.KvsProducer` fails to stream video to KVS on Ubuntu Core  
+
+> **See also:** [`docs/kvs-streaming-fixes.md`](kvs-streaming-fixes.md) — the complete ordered list of every code change applied on 2026-05-19 to achieve a working stream, with the reasoning behind each fix.  
 
 ---
 
