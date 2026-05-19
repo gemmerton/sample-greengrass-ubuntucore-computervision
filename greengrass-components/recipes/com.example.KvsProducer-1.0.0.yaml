@@ -87,9 +87,8 @@ Manifests:
           for plugin in \
             libgstcoreelements.so \
             libgstapp.so \
-            libgstvideoconvert.so \
+            libgstvideoconvertscale.so \
             libgstvideorate.so \
-            libgstvideoscale.so \
             libgstvideo4linux2.so \
             libgstjpeg.so \
             libgstx264.so \

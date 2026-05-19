@@ -133,9 +133,8 @@ parts:
       #                    appsrc→videoconvert→x264enc→h264parse→kvssink (encode)
       usr/lib/x86_64-linux-gnu/gstreamer-1.0/libgstcoreelements.so: gstreamer-kvs/lib/gstreamer-1.0/
       usr/lib/x86_64-linux-gnu/gstreamer-1.0/libgstapp.so: gstreamer-kvs/lib/gstreamer-1.0/
-      usr/lib/x86_64-linux-gnu/gstreamer-1.0/libgstvideoconvert.so: gstreamer-kvs/lib/gstreamer-1.0/
+      usr/lib/x86_64-linux-gnu/gstreamer-1.0/libgstvideoconvertscale.so: gstreamer-kvs/lib/gstreamer-1.0/
       usr/lib/x86_64-linux-gnu/gstreamer-1.0/libgstvideorate.so: gstreamer-kvs/lib/gstreamer-1.0/
-      usr/lib/x86_64-linux-gnu/gstreamer-1.0/libgstvideoscale.so: gstreamer-kvs/lib/gstreamer-1.0/
       usr/lib/x86_64-linux-gnu/gstreamer-1.0/libgstvideo4linux2.so: gstreamer-kvs/lib/gstreamer-1.0/
       usr/lib/x86_64-linux-gnu/gstreamer-1.0/libgstjpeg.so: gstreamer-kvs/lib/gstreamer-1.0/
       usr/lib/x86_64-linux-gnu/gstreamer-1.0/libgstx264.so: gstreamer-kvs/lib/gstreamer-1.0/
