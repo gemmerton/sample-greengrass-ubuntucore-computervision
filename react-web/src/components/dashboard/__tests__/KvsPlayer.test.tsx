@@ -26,6 +26,12 @@ vi.mock("../../../services/kvsService", () => ({
 import { getHlsStreamingUrl } from "../../../services/kvsService";
 import { KvsPlayer } from "../KvsPlayer";
 
+// jsdom doesn't implement HTMLMediaElement.play
+Object.defineProperty(HTMLMediaElement.prototype, "play", {
+  configurable: true,
+  value: () => Promise.resolve(),
+});
+
 const mockCredentials = {
   accessKeyId: "AKIA",
   secretAccessKey: "secret",
@@ -80,17 +86,24 @@ describe("KvsPlayer", () => {
     expect(screen.getByText(/stream offline/i)).toBeInTheDocument();
   });
 
-  it("displays stream status from health message prop", () => {
+  it("displays 'Live' status once stream is playing", async () => {
     vi.mocked(getHlsStreamingUrl).mockResolvedValue({
       url: "https://example.com/stream.m3u8",
       expiresAt: new Date(Date.now() + 3600000),
     });
     render(
       <KvsPlayer streamName="test-stream" region="us-east-1"
-                 credentials={mockCredentials}
-                 streamStatus="buffering" />
+                 credentials={mockCredentials} />
     );
-    expect(screen.getByText(/buffering/i)).toBeInTheDocument();
+
+    await waitFor(() => expect(lastHlsInstance).not.toBeNull());
+
+    const manifestHandler = lastHlsInstance?.on.mock.calls.find(
+      (c: any) => c[0] === "hlsManifestParsed"
+    )?.[1];
+    act(() => { manifestHandler?.(); });
+
+    expect(screen.getByText(/live/i)).toBeInTheDocument();
   });
 
   it("fetches a new URL when a fatal HLS error occurs", async () => {

@@ -275,6 +275,24 @@
   box-shadow: 0 0 60px rgba(255, 153, 0, 0.25), 0 0 120px rgba(255, 153, 0, 0.1), var(--shadow-xl);
 }
 
+/* Video card - green/emerald glow */
+.dashboard__card--video {
+  border-color: rgba(16, 185, 129, 0.5);
+  box-shadow: 0 0 25px rgba(16, 185, 129, 0.12), 0 4px 24px rgba(0, 0, 0, 0.4);
+}
+
+.dashboard__card--video::before {
+  background: linear-gradient(160deg, rgba(16, 185, 129, 0.7) 0%, rgba(6, 182, 212, 0.4) 30%, transparent 50%, rgba(16, 185, 129, 0.2) 80%, rgba(16, 185, 129, 0.5) 100%);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+
+.dashboard__card--video:hover {
+  border-color: rgba(16, 185, 129, 0.8);
+  box-shadow: 0 0 60px rgba(16, 185, 129, 0.25), 0 0 120px rgba(16, 185, 129, 0.1), var(--shadow-xl);
+}
+
 /* Messages card - cool blue/cyan glow */
 .dashboard__card--messages {
   border-color: rgba(59, 130, 246, 0.5);
@@ -387,6 +405,125 @@
   margin-top: var(--spacing-lg);
 }
 
+/* ─── Slide-out Message Drawer ──────────────────────────────────────── */
+
+.dashboard__drawer-tab {
+  position: fixed;
+  top: 50%;
+  right: 0;
+  transform: translateY(-50%);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 14px;
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  background: var(--color-surface);
+  border: 1px solid rgba(59, 130, 246, 0.4);
+  border-right: none;
+  border-radius: var(--border-radius-lg) 0 0 var(--border-radius-lg);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  box-shadow: -2px 0 12px rgba(0, 0, 0, 0.3);
+}
+
+.dashboard__drawer-tab:hover {
+  color: var(--color-primary);
+  border-color: rgba(59, 130, 246, 0.7);
+  box-shadow: -4px 0 20px rgba(59, 130, 246, 0.15);
+}
+
+.dashboard__drawer-tab--active {
+  right: 400px;
+  color: var(--color-text-bright);
+  background: rgba(59, 130, 246, 0.15);
+  border-color: rgba(59, 130, 246, 0.6);
+}
+
+.dashboard__drawer-tab-label {
+  writing-mode: vertical-rl;
+}
+
+.dashboard__drawer-tab-badge {
+  writing-mode: horizontal-tb;
+  background: var(--color-primary);
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: var(--font-weight-bold);
+  min-width: 18px;
+  height: 18px;
+  border-radius: var(--border-radius-full);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+}
+
+.dashboard__drawer {
+  position: fixed;
+  top: 0;
+  right: -400px;
+  width: 400px;
+  height: 100vh;
+  z-index: 99;
+  background: var(--color-card-bg);
+  border-left: 2px solid rgba(59, 130, 246, 0.4);
+  box-shadow: -8px 0 30px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.dashboard__drawer--open {
+  right: 0;
+}
+
+.dashboard__drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-md) var(--spacing-lg);
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+.dashboard__drawer-title {
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-bright);
+  margin: 0;
+}
+
+.dashboard__drawer-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--border-radius-md);
+  background: transparent;
+  border: 1px solid var(--color-border);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.dashboard__drawer-close:hover {
+  background: var(--color-surface-elevated);
+  color: var(--color-text-primary);
+  border-color: var(--color-text-secondary);
+}
+
+.dashboard__drawer-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--spacing-md);
+}
+
 /* ─── Responsive ─────────────────────────────────────────────────────── */
 
 @media (max-width: 1024px) {
@@ -424,6 +561,15 @@
 
   .dashboard__status-bar {
     flex-wrap: wrap;
+  }
+
+  .dashboard__drawer {
+    width: 100%;
+    right: -100%;
+  }
+
+  .dashboard__drawer-tab--active {
+    right: calc(100% - 48px);
   }
 }
 

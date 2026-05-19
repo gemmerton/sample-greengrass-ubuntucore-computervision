@@ -2,8 +2,7 @@
   position: relative;
   width: 100%;
   background: #000;
-  border: 2px solid #444;
-  border-radius: 4px;
+  border-radius: var(--border-radius-xl);
   overflow: hidden;
 }
 
@@ -26,5 +25,5 @@
 
 .kvs-player-overlay.status-error { color: #f66; }
 .kvs-player-overlay.status-buffering { color: #fa0; }
-.kvs-player-overlay.status-streaming { color: #6f6; }
+.kvs-player-overlay.status-streaming { color: #10b981; }
 .kvs-player-overlay.status-offline { color: #aaa; }

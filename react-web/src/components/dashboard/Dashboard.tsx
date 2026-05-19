@@ -3,24 +3,23 @@
  * Redesigned: content-first layout with collapsible settings panel
  */
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { Header } from './Header';
-import { ImageGallery } from './ImageGallery';
+// import { ImageGallery } from './ImageGallery';  // S3 features temporarily hidden
 import { MessageFeed } from './MessageFeed';
-import { S3BucketInput } from './S3BucketInput';
+// import { S3BucketInput } from './S3BucketInput';  // S3 features temporarily hidden
 import { MqttTopicInput } from './MqttTopicInput';
 import { ThingNameInput } from './ThingNameInput';
 import { ConfidenceThresholdControl } from './ConfidenceThresholdControl';
 import { ModelSelector } from '../controls/ModelSelector';
-import { S3Provider, useS3 } from '../../contexts/S3Context';
+import { S3Provider } from '../../contexts/S3Context';
 import { MqttProvider, useMqtt } from '../../contexts/MqttContext';
 import { useAuthenticatedAWS } from '../../hooks/useAuthenticatedAWS';
 import { KvsPlayer } from './KvsPlayer';
-import type { KvsHealthMessage, StreamStatus } from '../../types/kvs';
 import type { AwsCredentialIdentity } from '@aws-sdk/types';
 import { config } from '../../utils/config';
 
-import { S3Object, S3Error } from '../../types/s3';
+// import { S3Object, S3Error } from '../../types/s3';  // S3 features temporarily hidden
 import './Dashboard.css';
 
 export interface DashboardProps {
@@ -33,27 +32,11 @@ const DashboardContent: React.FC<DashboardProps> = ({
   children,
   className = '',
 }) => {
-  const { state, actions: s3Actions } = useS3();
   const { state: mqttState } = useMqtt();
   const { credentials, region } = useAuthenticatedAWS();
-  const previousMessageCountRef = useRef<number>(0);
   const [thingName, setThingName] = useState<string>('');
   const [settingsOpen, setSettingsOpen] = useState<boolean>(false);
-  const [kvsStreamStatus, setKvsStreamStatus] = useState<StreamStatus>('offline');
-
-  /**
-   * Handle S3 image gallery errors
-   */
-  const handleS3Error = useCallback((error: S3Error) => {
-    console.error('S3 Gallery Error:', error);
-  }, []);
-
-  /**
-   * Handle successful S3 image load
-   */
-  const handleImageClick = useCallback((image: S3Object) => {
-    console.log('Image clicked:', image);
-  }, []);
+  const [messagePanelOpen, setMessagePanelOpen] = useState<boolean>(false);
 
   /**
    * Handle MQTT topic change
@@ -61,14 +44,6 @@ const DashboardContent: React.FC<DashboardProps> = ({
   const handleMqttTopicChange = useCallback((topic: string) => {
     console.log('MQTT topic changed:', topic);
   }, []);
-
-  // Determine S3 status from context
-  const getS3Status = () => {
-    if (state.loading) return 'loading';
-    if (state.error) return 'error';
-    if (state.images.length > 0 || state.selectedBucket) return 'connected';
-    return 'loading';
-  };
 
   // Determine MQTT status from context
   const getMqttStatus = () => {
@@ -82,43 +57,6 @@ const DashboardContent: React.FC<DashboardProps> = ({
     return 'disconnected';
   };
 
-  /**
-   * Auto-refresh S3 images when new MQTT messages are received
-   */
-  useEffect(() => {
-    if (mqttState.messageCount > previousMessageCountRef.current && 
-        mqttState.messageCount > 0 && 
-        state.selectedBucket && 
-        !state.loading) {
-      
-      console.log(` New MQTT message received (count: ${mqttState.messageCount}), refreshing S3 images...`);
-      
-      const refreshTimeout = setTimeout(() => {
-        s3Actions.refreshImages();
-      }, 1000);
-
-      previousMessageCountRef.current = mqttState.messageCount;
-      return () => clearTimeout(refreshTimeout);
-    } else {
-      previousMessageCountRef.current = mqttState.messageCount;
-    }
-  }, [mqttState.messageCount, state.selectedBucket, state.loading, s3Actions]);
-
-  /**
-   * Watch for KVS health messages on camera/kvs-status topic
-   */
-  useEffect(() => {
-    const lastMsg = mqttState.lastMessage;
-    if (!lastMsg || lastMsg.topic !== 'camera/kvs-status') return;
-    try {
-      const health: KvsHealthMessage = JSON.parse(lastMsg.payload);
-      setKvsStreamStatus(health.connection_status);
-    } catch {
-      // malformed message — ignore
-    }
-  }, [mqttState.lastMessage]);
-
-  const s3Status = getS3Status();
   const mqttStatus = getMqttStatus();
 
   return (
@@ -136,10 +74,6 @@ const DashboardContent: React.FC<DashboardProps> = ({
               <span className={`dashboard__pill dashboard__pill--success`} aria-label="Auth: Connected">
                 <span className="dashboard__pill-dot dashboard__pill-dot--success" aria-hidden="true"></span>
                 Auth
-              </span>
-              <span className={`dashboard__pill dashboard__pill--${s3Status === 'connected' ? 'success' : s3Status === 'error' ? 'error' : 'pending'}`} aria-label={`S3: ${s3Status}`}>
-                <span className={`dashboard__pill-dot dashboard__pill-dot--${s3Status === 'connected' ? 'success' : s3Status === 'error' ? 'error' : 'pending'}`} aria-hidden="true"></span>
-                S3
               </span>
               <span className={`dashboard__pill dashboard__pill--${mqttStatus === 'connected' ? 'success' : mqttStatus === 'error' ? 'error' : 'pending'}`} aria-label={`MQTT: ${mqttStatus}`}>
                 <span className={`dashboard__pill-dot dashboard__pill-dot--${mqttStatus === 'connected' ? 'success' : mqttStatus === 'error' ? 'error' : 'pending'}`} aria-hidden="true"></span>
@@ -174,7 +108,6 @@ const DashboardContent: React.FC<DashboardProps> = ({
               <div className="dashboard__settings-section">
                 <h3 className="dashboard__settings-heading">Data Sources</h3>
                 <div className="dashboard__settings-grid">
-                  <S3BucketInput className="dashboard__settings-field" />
                   <MqttTopicInput
                     className="dashboard__settings-field"
                     onTopicChange={handleMqttTopicChange}
@@ -200,40 +133,17 @@ const DashboardContent: React.FC<DashboardProps> = ({
             </div>
           </div>
 
-          {/* Content Grid - the hero of the page */}
-          <section className="dashboard__content" aria-label="Dashboard content">
-            <div className="dashboard__grid">
-              {/* S3 Image Gallery */}
-              <article className="dashboard__card dashboard__card--images" aria-labelledby="image-gallery-title">
-                <ImageGallery
-                  className="dashboard__image-gallery"
-                  onImageClick={handleImageClick}
-                  onError={handleS3Error}
-                />
-              </article>
-
-              {/* MQTT Message Feed */}
-              <article className="dashboard__card dashboard__card--messages" aria-labelledby="message-feed-title">
-                <MessageFeed
-                  className="dashboard__message-feed"
-                  maxMessages={50}
-                  showConnectionStatus={true}
-                />
-              </article>
-            </div>
-          </section>
-
-          {/* KVS Live Stream */}
+          {/* KVS Live Stream - primary content */}
           {credentials && (
-            <div className="dashboard-video-section">
-              <h3>Live Stream</h3>
-              <KvsPlayer
-                streamName={(import.meta as any).env?.VITE_KVS_STREAM_NAME ?? ''}
-                region={region ?? config.aws.region}
-                credentials={credentials as unknown as AwsCredentialIdentity}
-                streamStatus={kvsStreamStatus}
-              />
-            </div>
+            <section className="dashboard__content" aria-label="Live video stream">
+              <article className="dashboard__card dashboard__card--video" aria-labelledby="video-stream-title">
+                <KvsPlayer
+                  streamName={(import.meta as any).env?.VITE_KVS_STREAM_NAME ?? ''}
+                  region={region ?? config.aws.region}
+                  credentials={credentials as unknown as AwsCredentialIdentity}
+                />
+              </article>
+            </section>
           )}
 
           {/* Custom children content */}
@@ -242,6 +152,51 @@ const DashboardContent: React.FC<DashboardProps> = ({
           )}
         </div>
       </main>
+
+      {/* IoT Message Feed - slide-out panel from right */}
+      <button
+        className={`dashboard__drawer-tab ${messagePanelOpen ? 'dashboard__drawer-tab--active' : ''}`}
+        onClick={() => setMessagePanelOpen(!messagePanelOpen)}
+        aria-expanded={messagePanelOpen}
+        aria-controls="message-drawer"
+        aria-label={messagePanelOpen ? 'Hide messages' : 'Show messages'}
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+        </svg>
+        <span className="dashboard__drawer-tab-label">Messages</span>
+        {mqttState.messageCount > 0 && (
+          <span className="dashboard__drawer-tab-badge">{mqttState.messageCount}</span>
+        )}
+      </button>
+
+      <aside
+        id="message-drawer"
+        className={`dashboard__drawer ${messagePanelOpen ? 'dashboard__drawer--open' : ''}`}
+        aria-label="IoT Message Feed"
+        aria-hidden={!messagePanelOpen}
+      >
+        <div className="dashboard__drawer-header">
+          <h3 className="dashboard__drawer-title">IoT Messages</h3>
+          <button
+            className="dashboard__drawer-close"
+            onClick={() => setMessagePanelOpen(false)}
+            aria-label="Close message panel"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
+        <div className="dashboard__drawer-content">
+          <MessageFeed
+            className="dashboard__message-feed"
+            maxMessages={50}
+            showConnectionStatus={true}
+          />
+        </div>
+      </aside>
     </div>
   );
 };
