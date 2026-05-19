@@ -154,7 +154,7 @@ class EncodingPipeline:
             f"appsrc name=src format=time is-live=true do-timestamp=true "
             f"caps=video/x-raw,format=BGR,width={self._width},"
             f"height={self._height},framerate={self._framerate}/1 "
-            f"! videoconvert ! x264enc tune=zerolatency key-int-max={self._framerate * 2} "
+            f"! videoconvert ! video/x-raw,format=I420 ! x264enc tune=zerolatency key-int-max={self._framerate * 2} "
             f"! h264parse config-interval=-1 "
             f"! kvssink stream-name={self._stream_name} "
             f"aws-region={self._region}"
