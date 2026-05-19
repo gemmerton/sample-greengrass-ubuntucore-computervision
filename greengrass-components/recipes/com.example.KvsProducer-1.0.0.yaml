@@ -79,17 +79,40 @@ Manifests:
           mkdir -p {work:path}/run && \
           mkdir -p {work:path}/gst-registry && \
           mkdir -p {work:path}/snapshots && \
-          chmod 777 {work:path}/run {work:path}/gst-registry {work:path}/snapshots && \
+          mkdir -p {work:path}/gst-plugins && \
+          chmod 777 {work:path}/run {work:path}/gst-registry {work:path}/snapshots {work:path}/gst-plugins && \
           cp {artifacts:path}/kvs_log_configuration {work:path}/kvs_log_configuration && \
-          chmod 644 {work:path}/kvs_log_configuration'
+          chmod 644 {work:path}/kvs_log_configuration && \
+          GST_SRC="{configuration:/GstKvsMount}/lib/gstreamer-1.0" && \
+          for plugin in \
+            libgstcoreelements.so \
+            libgstapp.so \
+            libgstvideoconvert.so \
+            libgstvideorate.so \
+            libgstvideoscale.so \
+            libgstvideo4linux2.so \
+            libgstjpeg.so \
+            libgstx264.so \
+            libgstvideoparsersbad.so \
+            libgstkvssink.so; do \
+            src="${GST_SRC}/${plugin}"; \
+            if [ -f "$src" ]; then \
+              cp "$src" "{work:path}/gst-plugins/"; \
+            else \
+              echo "WARNING: GStreamer plugin not found: $src" >&2; \
+            fi; \
+          done && \
+          cp "{configuration:/GstKvsMount}/lib/gstreamer-1.0/gst-plugin-scanner" "{work:path}/gst-plugins/gst-plugin-scanner" && \
+          chmod +x "{work:path}/gst-plugins/gst-plugin-scanner"'
       Run:
         Script: |
           /bin/bash -c 'set -e && \
           GST_KVS_MOUNT="{configuration:/GstKvsMount}" && \
           export LD_LIBRARY_PATH="${GST_KVS_MOUNT}/lib" && \
-          export GST_PLUGIN_PATH="${GST_KVS_MOUNT}/lib/gstreamer-1.0" && \
+          export GST_PLUGIN_PATH="{work:path}/gst-plugins" && \
+          export GST_PLUGIN_SYSTEM_PATH_1_0="" && \
           export GI_TYPELIB_PATH="${GST_KVS_MOUNT}/lib/girepository-1.0" && \
-          export GST_PLUGIN_SCANNER="${GST_KVS_MOUNT}/lib/gstreamer-1.0/gst-plugin-scanner" && \
+          export GST_PLUGIN_SCANNER="{work:path}/gst-plugins/gst-plugin-scanner" && \
           export PYTHONPATH="${GST_KVS_MOUNT}/lib/python3" && \
           export GST_REGISTRY_PATH="{work:path}/gst-registry" && \
           export WORK_PATH="{work:path}/snapshots" && \

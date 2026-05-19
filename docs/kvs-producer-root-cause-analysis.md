@@ -192,17 +192,37 @@ This does not prevent streaming, but it floods the component log and makes findi
 
 ### Issue 7 — NOT AN ISSUE: Greengrass Snap Already Has gstreamer-kvs Content Plug
 
-**Confirmed resolved:** The Greengrass snap running on the device already declares the `gstreamer-kvs` content interface plug. The connection can be established with `snap connect aws-iot-greengrass:gstreamer-kvs kvs-gstreamer:gstreamer-kvs`, which proves the plug exists. This was a custom-built Greengrass snap — not the standard one from the Snap Store.
+**Confirmed resolved:** A custom-built Greengrass snap (not the standard one from the Snap Store) is running on the device. It declares the `gstreamer-kvs` content interface plug and the connection has been successfully established. The Greengrass snap uses `base: core24` (Python 3.12), which matches the `python3-gi` extension (`_gi.cpython-312-x86_64-linux-gnu.so`) staged from the kvs-gstreamer snap. No Python version mismatch.
 
-The Greengrass snap uses `base: core24` (Python 3.12), which matches the `python3-gi` extension (`_gi.cpython-312-x86_64-linux-gnu.so`) staged from the kvs-gstreamer snap. No Python version mismatch.
+**Important — how snap content interface mounts work:**
 
-**Verify the connection is active before debugging further:**
+The `snap connect` command sets up a bind mount from `/snap/kvs-gstreamer/current/gstreamer-kvs/` to `/var/snap/aws-iot-greengrass/common/gstreamer-kvs`. This bind mount is applied by `snap-confine` **within the Greengrass snap's private mount namespace only** — it is not visible in the host's mount namespace. Running `ls /var/snap/aws-iot-greengrass/common/gstreamer-kvs/` from the host shell will **always** show an empty directory regardless of whether the content interface is working correctly. This caused significant confusion during debugging; the empty directory is expected and correct.
+
+**Correct verification commands:**
+
 ```bash
+# 1. Confirm the connection is recorded by snapd
 snap connections aws-iot-greengrass | grep gstreamer-kvs
-ls /var/snap/aws-iot-greengrass/common/gstreamer-kvs/lib/ | head
+# Expected: content[gstreamer-kvs]  aws-iot-greengrass:gstreamer-kvs  kvs-gstreamer:gstreamer-kvs
+
+# 2. Confirm the mount is active by entering the Greengrass process namespace
+GGPID=$(pgrep -f "Greengrass.jar" | head -1)
+nsenter -m --target $GGPID -- ls /var/snap/aws-iot-greengrass/common/gstreamer-kvs/lib/ | head
 ```
 
-If the connection is active and the lib directory is populated, the GStreamer libraries are accessible and `from gi.repository import Gst` should succeed at component startup. The presence of STARTUP ENV lines in the component log confirms this.
+If (1) shows the connection and (2) shows library files, the GStreamer libraries are accessible and `from gi.repository import Gst` should succeed. The presence of STARTUP ENV lines in the component log provides a further confirmation that the gi/GStreamer import chain completed successfully.
+
+**Note on the repo source:** The `greengrass-snap/snap/snapcraft.yaml` in this repository does not yet include the `gstreamer-kvs` plug declaration. If the Greengrass snap is ever rebuilt from the repo source, the plug must be added:
+
+```yaml
+plugs:
+  gstreamer-kvs:
+    interface: content
+    content: gstreamer-kvs
+    target: $SNAP_COMMON/gstreamer-kvs
+```
+
+The `greengrass-daemon` app's `plugs` list also needs `- gstreamer-kvs` added, otherwise the daemon process won't have the mount active even if the snap-level plug is declared.
 
 ---
 
@@ -333,17 +353,25 @@ The `merge` value must be a **JSON string** (not a dict) when passed to the Gree
 
 ### Step 1: Confirm Snap Content Interface Is Connected
 
-The Greengrass snap on the device already has the `gstreamer-kvs` plug. Confirm the connection is active and the library directory is populated:
+The custom Greengrass snap on the device has the `gstreamer-kvs` plug. Confirm the connection is active:
 
 ```bash
 snap connections aws-iot-greengrass | grep gstreamer-kvs
-ls /var/snap/aws-iot-greengrass/common/gstreamer-kvs/lib/ | head
+# Expected: content[gstreamer-kvs]  aws-iot-greengrass:gstreamer-kvs  kvs-gstreamer:gstreamer-kvs
 ```
 
-If the connection is present and `lib/` shows files, proceed to Step 2. If the connection was dropped (e.g., after a snap refresh), reconnect it:
+If the connection was dropped (e.g., after a snap refresh), reconnect it:
 ```bash
 snap connect aws-iot-greengrass:gstreamer-kvs kvs-gstreamer:gstreamer-kvs
 ```
+
+To confirm the libraries are actually visible from within the Greengrass process namespace (not from the host — see Issue 7 for why the host view is always empty):
+```bash
+GGPID=$(pgrep -f "Greengrass.jar" | head -1)
+nsenter -m --target $GGPID -- ls /var/snap/aws-iot-greengrass/common/gstreamer-kvs/lib/ | head
+```
+
+If the connection is present and the nsenter command shows library files, proceed to Step 2.
 
 ### Step 2: Rebuild kvs-gstreamer Snap with Current snapcraft.yaml
 
@@ -361,10 +389,13 @@ snap install --dangerous ~/kvs-gstreamer_1.0.0_amd64.snap
 snap connect aws-iot-greengrass:gstreamer-kvs kvs-gstreamer:gstreamer-kvs
 ```
 
-After reinstall, verify:
+After reinstall, verify the key libraries are present by entering the Greengrass process namespace (the host-side path always appears empty — see Issue 7):
 ```bash
-ls /var/snap/aws-iot-greengrass/common/gstreamer-kvs/lib/
-# Must show: libgstreamer-1.0.so*, libgstkvssink.so (in gstreamer-1.0/), libcproducer.so*, libKinesisVideoProducer.so*, etc.
+GGPID=$(pgrep -f "Greengrass.jar" | head -1)
+nsenter -m --target $GGPID -- ls /var/snap/aws-iot-greengrass/common/gstreamer-kvs/lib/
+# Must show: libgstreamer-1.0.so*, libcproducer.so*, libKinesisVideoProducer.so*, etc.
+nsenter -m --target $GGPID -- ls /var/snap/aws-iot-greengrass/common/gstreamer-kvs/lib/gstreamer-1.0/
+# Must show: libgstkvssink.so
 ```
 
 ### Step 3: Verify TES Credential Injection
@@ -372,7 +403,7 @@ ls /var/snap/aws-iot-greengrass/common/gstreamer-kvs/lib/
 Deploy the current component code (with STARTUP ENV logging) and check the component log:
 
 ```bash
-cat /var/snap/aws-iot-greengrass/common/logs/com.example.KvsProducer.log | grep "STARTUP ENV"
+cat /var/snap/aws-iot-greengrass/common/greengrass/v2/logs/com.example.KvsProducer.log | grep "STARTUP ENV"
 ```
 
 Expected output:
@@ -388,7 +419,7 @@ If `AWS_CONTAINER_CREDENTIALS_FULL_URI` is UNSET, TES is not injecting env vars.
 
 Also check for TES credential fetch result:
 ```bash
-cat /var/snap/aws-iot-greengrass/common/logs/com.example.KvsProducer.log | grep "TES:"
+cat /var/snap/aws-iot-greengrass/common/greengrass/v2/logs/com.example.KvsProducer.log | grep "TES:"
 ```
 
 ### Step 4: Implement Credential-Path Refresh (Code Change Required)
@@ -452,7 +483,7 @@ And similarly in `CapturePipeline.start()`.
 After implementing all fixes, verify in order:
 
 1. `snap connections aws-iot-greengrass | grep gstreamer-kvs` → shows connected interface
-2. `ls /var/snap/aws-iot-greengrass/common/gstreamer-kvs/lib/libcproducer.so*` → file exists
+2. `nsenter -m --target $(pgrep -f "Greengrass.jar" | head -1) -- ls /var/snap/aws-iot-greengrass/common/gstreamer-kvs/lib/libcproducer.so*` → file exists (must be checked from within the Greengrass process namespace; host-side `ls` of that path always shows empty)
 3. STARTUP ENV log shows `AWS_CONTAINER_CREDENTIALS_FULL_URI` is set (not UNSET)
 4. TES log line shows "TES: credentials fetched OK"
 5. GStreamer debug: "calling Gst.parse_launch()" → "Gst.parse_launch() done" → "set_state(PLAYING) returned" — all four lines visible
@@ -626,7 +657,7 @@ This gives an unambiguous diagnostic gate:
 
 **The most important diagnostic action on the device is:**
 ```bash
-grep "STARTUP ENV" /var/snap/aws-iot-greengrass/common/logs/com.example.KvsProducer.log
+grep "STARTUP ENV" /var/snap/aws-iot-greengrass/common/greengrass/v2/logs/com.example.KvsProducer.log
 ```
 If that returns nothing, check the snap connection first, not credentials.
 
@@ -696,7 +727,7 @@ With `ROLLBACK` policy: if the component crashes immediately on the new deployme
 **How to verify which version is actually running:**
 ```bash
 # Check which component version is currently active
-cat /var/snap/aws-iot-greengrass/common/logs/greengrass.log | grep "com.example.KvsProducer" | grep "version"
+cat /var/snap/aws-iot-greengrass/common/greengrass/v2/logs/greengrass.log | grep "com.example.KvsProducer" | grep "version"
 ```
 
 Or check the deployment status via the AWS console → IoT Core → Greengrass → Deployments.

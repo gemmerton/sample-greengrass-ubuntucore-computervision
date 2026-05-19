@@ -125,8 +125,21 @@ parts:
       # libv4l2 + libv4lconvert: needed by v4l2src
       usr/lib/x86_64-linux-gnu/libv4l2.so*: gstreamer-kvs/lib/
       usr/lib/x86_64-linux-gnu/libv4lconvert.so*: gstreamer-kvs/lib/
-      # ── GStreamer plugins directory (all staged plugins go here) ──
-      usr/lib/x86_64-linux-gnu/gstreamer-1.0/: gstreamer-kvs/lib/gstreamer-1.0/
+      # ── GStreamer plugins: only the specific plugins needed for the pipeline ──
+      # Staging the entire gstreamer-1.0/ directory causes a segfault on headless
+      # systems because GPU/Vulkan/X11 plugins (libgstvulkan.so, libgstximagesrc.so,
+      # etc.) crash during plugin_init when the hardware is absent.
+      # Pipeline requires: v4l2src→tee→videoconvert→videorate→jpegenc (capture)
+      #                    appsrc→videoconvert→x264enc→h264parse→kvssink (encode)
+      usr/lib/x86_64-linux-gnu/gstreamer-1.0/libgstcoreelements.so: gstreamer-kvs/lib/gstreamer-1.0/
+      usr/lib/x86_64-linux-gnu/gstreamer-1.0/libgstapp.so: gstreamer-kvs/lib/gstreamer-1.0/
+      usr/lib/x86_64-linux-gnu/gstreamer-1.0/libgstvideoconvert.so: gstreamer-kvs/lib/gstreamer-1.0/
+      usr/lib/x86_64-linux-gnu/gstreamer-1.0/libgstvideorate.so: gstreamer-kvs/lib/gstreamer-1.0/
+      usr/lib/x86_64-linux-gnu/gstreamer-1.0/libgstvideoscale.so: gstreamer-kvs/lib/gstreamer-1.0/
+      usr/lib/x86_64-linux-gnu/gstreamer-1.0/libgstvideo4linux2.so: gstreamer-kvs/lib/gstreamer-1.0/
+      usr/lib/x86_64-linux-gnu/gstreamer-1.0/libgstjpeg.so: gstreamer-kvs/lib/gstreamer-1.0/
+      usr/lib/x86_64-linux-gnu/gstreamer-1.0/libgstx264.so: gstreamer-kvs/lib/gstreamer-1.0/
+      usr/lib/x86_64-linux-gnu/gstreamer-1.0/libgstvideoparsersbad.so: gstreamer-kvs/lib/gstreamer-1.0/
       # ── gst-plugin-scanner: subprocess used when building plugin registry ──
       # Path on Ubuntu 24.04: usr/lib/x86_64-linux-gnu/gstreamer1.0/gstreamer-1.0/
       usr/lib/x86_64-linux-gnu/gstreamer1.0/gstreamer-1.0/gst-plugin-scanner: gstreamer-kvs/lib/gstreamer-1.0/gst-plugin-scanner
