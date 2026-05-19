@@ -209,6 +209,16 @@ class GreengrassDeployer:
                 recipe_data['ComponentConfiguration']['DefaultConfiguration']['S3BucketName'] = self.s3_bucket
                 print(f"Updated S3BucketName to: {self.s3_bucket}")
 
+        # Collect non-accessControl DefaultConfiguration values to propagate
+        # via configurationUpdate.merge at deploy time. Without this, changing
+        # DefaultConfiguration in a recipe has no effect on devices that already
+        # have an older value stored in config.tlog.
+        default_config = {}
+        cfg = recipe_data.get('ComponentConfiguration', {}).get('DefaultConfiguration', {})
+        for k, v in cfg.items():
+            if k != 'accessControl':
+                default_config[k] = v
+
         # Create component
         try:
             response = self.greengrass_client.create_component_version(
@@ -218,7 +228,8 @@ class GreengrassDeployer:
             return {
                 'componentName': component_name,
                 'componentVersion': component_version,
-                'arn': response['arn']
+                'arn': response['arn'],
+                'defaultConfig': default_config,
             }
         except ClientError as e:
             if e.response['Error']['Code'] == 'ConflictException':
@@ -233,7 +244,8 @@ class GreengrassDeployer:
                         return {
                             'componentName': component_name,
                             'componentVersion': component_version,
-                            'arn': response['arn']
+                            'arn': response['arn'],
+                            'defaultConfig': default_config,
                         }
                 else:
                     # This shouldn't happen since we auto-incremented, but handle gracefully
@@ -241,7 +253,8 @@ class GreengrassDeployer:
                     return {
                         'componentName': component_name,
                         'componentVersion': component_version,
-                        'arn': f"arn:aws:greengrass:{self.aws_region}:{self.account_id}:components:{component_name}:versions:{component_version}"
+                        'arn': f"arn:aws:greengrass:{self.aws_region}:{self.account_id}:components:{component_name}:versions:{component_version}",
+                        'defaultConfig': default_config,
                     }
             else:
                 print(f"Failed to create component {component_name}: {e}")
@@ -279,15 +292,20 @@ class GreengrassDeployer:
         deployment_name = f"deployment-{thing_name}"
 
         # Build component configuration from the supplied custom components.
-        # No configurationUpdate: let the recipe DefaultConfiguration take effect.
-        # Using reset:[''] (root reset) clears lifecycle scripts from the config
-        # tree for newly-added components before the recipe content is restored,
-        # causing GenericExternalService to see no Run script ("Nothing done").
+        # We merge the recipe DefaultConfiguration (minus accessControl) so that
+        # changes to those values propagate to devices that already have an older
+        # value in config.tlog. A root reset:[''] is deliberately avoided — it
+        # wipes lifecycle scripts from the config tree before the recipe content
+        # is restored, leaving GenericExternalService with no Run script.
         component_config = {}
         for component in components:
-            component_config[component['componentName']] = {
-                'componentVersion': component['componentVersion'],
-            }
+            entry = {'componentVersion': component['componentVersion']}
+            default_config = component.get('defaultConfig', {})
+            if default_config:
+                entry['configurationUpdate'] = {
+                    'merge': json.dumps(default_config)
+                }
+            component_config[component['componentName']] = entry
 
         # Include AWS-managed system components required by KvsProducer and ModelManagerCore.
         # These are public components — we resolve the latest available version rather than
@@ -389,23 +407,27 @@ class GreengrassDeployer:
     def get_components_from_recipes(self):
         """Get component information from recipe files, using the latest available version."""
         components = []
-        
+
         for recipe_file in self.recipes_dir.glob('*.yaml'):
             with open(recipe_file, 'r', encoding='utf-8') as f:
                 recipe_data = yaml.safe_load(f)
-            
+
             component_name = recipe_data['ComponentName']
             base_version = recipe_data['ComponentVersion']
-            
+
             # Find the latest version that exists in the cloud
             component_version = self._get_latest_version(component_name, base_version)
-            
+
+            cfg = recipe_data.get('ComponentConfiguration', {}).get('DefaultConfiguration', {})
+            default_config = {k: v for k, v in cfg.items() if k != 'accessControl'}
+
             components.append({
                 'componentName': component_name,
                 'componentVersion': component_version,
-                'arn': f"arn:aws:greengrass:{self.aws_region}:{self.account_id}:components:{component_name}:versions:{component_version}"
+                'arn': f"arn:aws:greengrass:{self.aws_region}:{self.account_id}:components:{component_name}:versions:{component_version}",
+                'defaultConfig': default_config,
             })
-        
+
         return components
 
     def _get_latest_version(self, component_name, base_version):
