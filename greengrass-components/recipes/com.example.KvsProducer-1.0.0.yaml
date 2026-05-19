@@ -77,10 +77,13 @@ Manifests:
           python3 -m pip install -r {artifacts:path}/requirements.txt && \
           deactivate && \
           mkdir -p {work:path}/run && \
+          rm -rf {work:path}/gst-registry && \
           mkdir -p {work:path}/gst-registry && \
           mkdir -p {work:path}/snapshots && \
+          rm -rf {work:path}/gst-plugins && \
           mkdir -p {work:path}/gst-plugins && \
           chmod 777 {work:path}/run {work:path}/gst-registry {work:path}/snapshots {work:path}/gst-plugins && \
+          rm -f {work:path}/kvs_log_configuration && \
           cp {artifacts:path}/kvs_log_configuration {work:path}/kvs_log_configuration && \
           chmod 644 {work:path}/kvs_log_configuration && \
           GST_SRC="{configuration:/GstKvsMount}/lib/gstreamer-1.0" && \
