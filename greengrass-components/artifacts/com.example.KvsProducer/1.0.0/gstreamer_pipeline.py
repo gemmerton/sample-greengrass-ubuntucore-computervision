@@ -64,8 +64,9 @@ class CapturePipeline:
         Gst.init(None)
         pipeline_str = (
             f"v4l2src device={self._device} "
-            f"! video/x-raw,width={self._width},height={self._height},"
+            f"! image/jpeg,width={self._width},height={self._height},"
             f"framerate={self._framerate}/1 "
+            f"! jpegdec "
             f"! tee name=t "
             f"t. ! queue ! videoconvert "
             f"! video/x-raw,format=BGR ! appsink name=raw_sink emit-signals=true "
