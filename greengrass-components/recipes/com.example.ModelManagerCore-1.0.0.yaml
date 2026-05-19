@@ -12,7 +12,9 @@ ComponentDependencies:
 ComponentConfiguration:
   DefaultConfiguration:
     # Snap component path (read-only, inside ovms-engine snap)
-    SnapComponentsPath: "/snap/ovms-engine/components/current"
+    # For sideloaded snaps use the revision (e.g. x1); _find_component_path
+    # also searches /snap/ovms-engine/components/x*/  and mnt/ as fallbacks.
+    SnapComponentsPath: "/snap/ovms-engine/components/x1"
 
     # Content interface mount paths
     # These paths correspond to the Greengrass snap's content plug targets.
@@ -36,6 +38,11 @@ ComponentConfiguration:
     #   snap connect aws-iot-greengrass:inference-models ovms-engine:inference-models
     OvmsConfigDir: "/var/snap/aws-iot-greengrass/current/ovms-engine-config"
     SnapCommonPath: "/var/snap/aws-iot-greengrass/current/ovms-engine-models"
+
+    # S3 bucket and prefix for .comp files (sideloaded snap fallback)
+    # Convention: s3://<bucket>/<prefix><snap>+<component>.comp
+    CompS3Bucket: "gg-ge-test"
+    CompS3Prefix: "components/"
 
     # OVMS gRPC endpoint (ovms-engine snap exposes on localhost:9000)
     OvmsGrpcUrl: "localhost:9000"
@@ -88,6 +95,8 @@ Manifests:
         export SNAP_COMMON="{configuration:/SnapCommonPath}" && \
         export OVMS_CONFIG_DIR="{configuration:/OvmsConfigDir}" && \
         export OVMS_GRPC_URL="{configuration:/OvmsGrpcUrl}" && \
+        export COMP_S3_BUCKET="{configuration:/CompS3Bucket}" && \
+        export COMP_S3_PREFIX="{configuration:/CompS3Prefix}" && \
         export HEALTH_CHECK_INTERVAL="{configuration:/HealthCheckInterval}" && \
         python3 {artifacts:path}/model_manager_core.py'
   Artifacts:

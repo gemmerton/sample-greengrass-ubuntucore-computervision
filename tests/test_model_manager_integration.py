@@ -188,7 +188,7 @@ class TestFullSnapInstallFlow:
         # Reported state should show failed
         models = _get_last_reported_models(mock_ipc_client)
         assert models['bad-model']['status'] == 'failed'
-        assert 'snap install failed' in models['bad-model']['reason']
+        assert 'snap store install failed' in models['bad-model']['reason']
 
 
 class TestFullS3DownloadFlow:

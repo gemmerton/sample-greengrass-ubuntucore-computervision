@@ -506,6 +506,10 @@ class TestEndToEndBothModels:
 
         manager.snapd = MagicMock()
         manager.snapd.install_component = MagicMock(return_value={})
+        # Return temp dirs so manifest and labels are accessible
+        manager._find_component_path = lambda name: os.path.join(
+            temp_dirs['snap_components'], name
+        )
 
         delta_event = MagicMock()
         delta_event.message.payload = json.dumps({

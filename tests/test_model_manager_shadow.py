@@ -282,7 +282,7 @@ class TestModelInstallDispatch:
         with patch.object(manager, '_install_snap_model') as mock_snap, \
              patch.object(manager, '_report_model_status'):
             manager._handle_model_install('faster-rcnn', {'source': 'snap'})
-            mock_snap.assert_called_once_with('faster-rcnn')
+            mock_snap.assert_called_once_with('faster-rcnn', {'source': 'snap'})
 
     def test_s3_source_calls_s3_install(self, manager):
         """Model with source 's3' dispatches to S3 download."""

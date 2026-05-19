@@ -53,6 +53,8 @@ def manager(mock_ipc_client):
         mgr.snapd = MagicMock()
         mgr.snapd.install_component = MagicMock(return_value={})
         mgr.snapd.remove_component = MagicMock(return_value={})
+        # Mock _find_component_path to return the store path convention
+        mgr._find_component_path = lambda name: f'/snap/ovms-engine/components/current/{name}'
         yield mgr
 
 
@@ -91,7 +93,7 @@ class TestSnapInstallCommand:
         payload = json.loads(update_calls[-1].kwargs['payload'])
         models = payload['state']['reported']['models']
         assert models['bad']['status'] == 'failed'
-        assert 'snap install failed' in models['bad']['reason']
+        assert 'snap store install failed' in models['bad']['reason']
         assert 'not found' in models['bad']['reason']
 
     def test_reports_failed_on_timeout(self, manager, mock_ipc_client):
@@ -106,7 +108,7 @@ class TestSnapInstallCommand:
         payload = json.loads(update_calls[-1].kwargs['payload'])
         models = payload['state']['reported']['models']
         assert models['slow-model']['status'] == 'failed'
-        assert 'snap install failed' in models['slow-model']['reason']
+        assert 'snap store install failed' in models['slow-model']['reason']
 
     def test_reports_failed_on_connection_error(self, manager, mock_ipc_client):
         """Reports failed status when snapd socket is unavailable."""
@@ -120,7 +122,7 @@ class TestSnapInstallCommand:
         payload = json.loads(update_calls[-1].kwargs['payload'])
         models = payload['state']['reported']['models']
         assert models['no-snap']['status'] == 'failed'
-        assert 'snap install failed' in models['no-snap']['reason']
+        assert 'snap store install failed' in models['no-snap']['reason']
 
     def test_error_message_includes_snapd_error_detail(self, manager, mock_ipc_client):
         """Error reason includes the specific SnapdError message."""
@@ -158,7 +160,7 @@ class TestManifestReading:
         payload = json.loads(update_calls[-1].kwargs['payload'])
         models = payload['state']['reported']['models']
         assert models['no-manifest']['status'] == 'failed'
-        assert 'manifest.json not found' in models['no-manifest']['reason']
+        assert 'manifest.json' in models['no-manifest']['reason']
 
     def test_reports_failed_when_manifest_invalid_json(self, manager, mock_ipc_client):
         """Reports failed status when manifest.json contains invalid JSON."""

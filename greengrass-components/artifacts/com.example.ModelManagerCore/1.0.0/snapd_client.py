@@ -5,6 +5,9 @@ to install, remove, and query snap components. This is the correct mechanism
 for programmatic snap management on Ubuntu Core when the calling snap has
 the snapd-control interface connected.
 
+Supports both store-installed and sideloaded snaps. For sideloaded snaps,
+components are installed via multipart form upload of .comp files.
+
 Reference: https://snapcraft.io/docs/snapd-rest-api
 """
 
@@ -13,6 +16,8 @@ import http.client
 import socket
 import time
 import logging
+import os
+import uuid
 
 logger = logging.getLogger(__name__)
 
@@ -233,3 +238,92 @@ class SnapdClient:
             True if installed, False otherwise
         """
         return self.info(snap_name) is not None
+
+    def is_store_snap(self, snap_name):
+        """Check if a snap was installed from the store (vs sideloaded).
+
+        A store-installed snap has a non-empty tracking-channel. Sideloaded
+        snaps (installed with --dangerous) have no tracking channel.
+
+        Args:
+            snap_name: Snap name to check
+
+        Returns:
+            True if installed from the store, False if sideloaded or not installed
+        """
+        snap_info = self.info(snap_name)
+        if snap_info is None:
+            return False
+        tracking_channel = snap_info.get("tracking-channel", "")
+        return bool(tracking_channel)
+
+    def sideload_component(self, comp_file_path, timeout=300):
+        """Sideload a snap component from a local .comp file.
+
+        Uses the snapd multipart form upload API to install a component
+        from a local file, equivalent to: snap install --dangerous <file>.comp
+
+        Args:
+            comp_file_path: Path to the .comp file on the local filesystem
+            timeout: Maximum seconds to wait for installation
+
+        Returns:
+            The change result dict on success
+
+        Raises:
+            SnapdError: If installation fails
+            FileNotFoundError: If the .comp file does not exist
+        """
+        if not os.path.isfile(comp_file_path):
+            raise FileNotFoundError(f"Component file not found: {comp_file_path}")
+
+        filename = os.path.basename(comp_file_path)
+        boundary = uuid.uuid4().hex
+
+        logger.info(
+            "Sideloading component from '%s' via snapd API", comp_file_path
+        )
+
+        with open(comp_file_path, "rb") as f:
+            comp_data = f.read()
+
+        # Build multipart form body matching snapd's expected format
+        body = (
+            f"--{boundary}\r\n"
+            f'Content-Disposition: form-data; name="action"\r\n\r\n'
+            f"install\r\n"
+            f"--{boundary}\r\n"
+            f'Content-Disposition: form-data; name="dangerous"\r\n\r\n'
+            f"true\r\n"
+            f"--{boundary}\r\n"
+            f'Content-Disposition: form-data; name="snap"; filename="{filename}"\r\n'
+            f"Content-Type: application/octet-stream\r\n\r\n"
+        ).encode("utf-8")
+
+        body += comp_data
+        body += f"\r\n--{boundary}--\r\n".encode("utf-8")
+
+        conn = self._make_connection()
+        try:
+            headers = {
+                "Content-Type": f"multipart/form-data; boundary={boundary}",
+                "Content-Length": str(len(body)),
+            }
+            conn.request("POST", f"/{SNAPD_API_VERSION}/snaps", body=body, headers=headers)
+            response = conn.getresponse()
+            data = json.loads(response.read().decode("utf-8"))
+
+            if data.get("type") == "error":
+                raise SnapdError(
+                    data.get("result", {}).get("message", "Unknown snapd error"),
+                    status_code=data.get("status-code"),
+                    kind=data.get("result", {}).get("kind"),
+                )
+
+            if data.get("type") == "async":
+                change_id = data.get("change")
+                return self._wait_for_change(change_id, timeout=timeout)
+            else:
+                return data.get("result", {})
+        finally:
+            conn.close()

@@ -12,6 +12,7 @@ import time
 import traceback
 import logging
 import json
+import glob
 import shutil
 import subprocess
 import re
@@ -50,6 +51,8 @@ class ModelManagerCore:
         self.ovms_config_dir = os.environ.get(
             "OVMS_CONFIG_DIR", "/var/snap/ovms-engine/common/config"
         )
+        self.comp_s3_bucket = os.environ.get("COMP_S3_BUCKET", "")
+        self.comp_s3_prefix = os.environ.get("COMP_S3_PREFIX", "components/")
 
         # Track current reported models state locally
         self.reported_models = {}
@@ -208,7 +211,7 @@ class ModelManagerCore:
         self._report_model_status(model_id, "installing")
 
         if source == "snap":
-            self._install_snap_model(model_id)
+            self._install_snap_model(model_id, model_config)
         elif source == "s3":
             s3_uri = model_config.get("s3_uri")
             if not s3_uri:
@@ -219,52 +222,118 @@ class ModelManagerCore:
                 return
             self._install_s3_model(model_id, s3_uri)
 
-    def _install_snap_model(self, model_id):
+    def _install_snap_model(self, model_id, model_config=None):
         """Install a model via snap component and read its manifest.
 
-        Uses the snapd REST API (via /run/snapd.socket) to install the snap
-        component of the ovms-engine snap, then reads the manifest.json from
-        the installed component path to extract model metadata for OVMS configuration.
+        For store-installed snaps, installs the component directly from the
+        Snap Store. For sideloaded snaps, downloads the .comp file from S3
+        and sideloads it via the snapd API.
 
         Args:
             model_id: The model identifier (e.g. 'faster-rcnn').
+            model_config: Optional dict with 'comp_s3_uri' for sideloaded fallback.
         """
         component_name = f"model-{model_id}"
         logger.info("Installing snap component: %s+%s", self.SNAP_NAME, component_name)
 
-        try:
-            self.snapd.install_component(self.SNAP_NAME, component_name, timeout=300)
-            logger.info("Snap component '%s+%s' installed successfully", self.SNAP_NAME, component_name)
+        if self.snapd.is_store_snap(self.SNAP_NAME):
+            # Store-installed: pull component directly from the store
+            try:
+                self.snapd.install_component(self.SNAP_NAME, component_name, timeout=300)
+                logger.info("Snap component '%s+%s' installed from store", self.SNAP_NAME, component_name)
+            except SnapdError as e:
+                logger.error("Store install failed for '%s+%s': %s", self.SNAP_NAME, component_name, e)
+                self._report_model_status(
+                    model_id, "failed", reason=f"snap store install failed: {e}"
+                )
+                return
+        else:
+            # Sideloaded: download .comp from S3 and sideload
+            comp_s3_uri = (model_config or {}).get("comp_s3_uri")
+            if not comp_s3_uri:
+                # Convention: s3://<bucket>/components/<snap-name>+<component>.comp
+                comp_s3_uri = self._default_comp_s3_uri(component_name)
 
-        except SnapdError as e:
-            logger.error("Snap install failed for '%s+%s': %s", self.SNAP_NAME, component_name, e)
+            if not comp_s3_uri:
+                logger.error(
+                    "Snap '%s' is sideloaded and no comp_s3_uri provided for '%s'",
+                    self.SNAP_NAME, component_name,
+                )
+                self._report_model_status(
+                    model_id, "failed",
+                    reason=(
+                        f"Snap '{self.SNAP_NAME}' is sideloaded; provide comp_s3_uri "
+                        f"or configure COMP_S3_BUCKET for component download"
+                    ),
+                )
+                return
+
+            try:
+                local_comp_path = self._download_comp_from_s3(comp_s3_uri, component_name)
+                self.snapd.sideload_component(local_comp_path, timeout=300)
+                logger.info(
+                    "Snap component '%s+%s' sideloaded successfully",
+                    self.SNAP_NAME, component_name,
+                )
+            except FileNotFoundError as e:
+                logger.error("Comp file not found after download: %s", e)
+                self._report_model_status(model_id, "failed", reason=str(e))
+                return
+            except SnapdError as e:
+                logger.error("Sideload failed for '%s+%s': %s", self.SNAP_NAME, component_name, e)
+                self._report_model_status(
+                    model_id, "failed", reason=f"snap sideload failed: {e}"
+                )
+                return
+            except Exception as e:
+                logger.error("Failed to download/sideload component: %s", e)
+                self._report_model_status(
+                    model_id, "failed", reason=f"comp download failed: {e}"
+                )
+                return
+            finally:
+                # Clean up downloaded .comp file
+                if 'local_comp_path' in locals() and os.path.isfile(local_comp_path):
+                    os.remove(local_comp_path)
+
+        # Read manifest.json - method depends on whether we can access the component path
+        manifest = None
+        component_path = self._find_component_path(f"model-{model_id}")
+
+        if component_path:
+            # Can access the component directly (store-installed or accessible path)
+            manifest_path = os.path.join(component_path, "manifest.json")
+            try:
+                with open(manifest_path, "r") as f:
+                    manifest = json.load(f)
+            except (FileNotFoundError, PermissionError) as e:
+                logger.warning("Cannot read manifest at %s (%s), trying S3 fallback", manifest_path, e)
+            except json.JSONDecodeError as e:
+                logger.error("Invalid JSON in manifest at %s: %s", manifest_path, e)
+                self._report_model_status(
+                    model_id, "failed", reason=f"Invalid manifest.json: {e}"
+                )
+                return
+
+        if manifest is None:
+            # Fallback: download manifest from S3 (for snap confinement scenarios)
+            manifest = self._download_manifest_from_s3(model_id)
+
+        if manifest is None:
             self._report_model_status(
-                model_id, "failed", reason=f"snap install failed: {e}"
+                model_id, "failed",
+                reason=f"manifest.json not accessible for model '{model_id}'",
             )
             return
 
-        # Read manifest.json from the installed component path
-        manifest_path = os.path.join(
-            self.snap_components_path, f"model-{model_id}", "manifest.json"
-        )
-        try:
-            with open(manifest_path, "r") as f:
-                manifest = json.load(f)
-        except FileNotFoundError:
-            logger.error("Manifest not found at %s", manifest_path)
-            self._report_model_status(
-                model_id, "failed", reason=f"manifest.json not found at {manifest_path}"
-            )
-            return
-        except json.JSONDecodeError as e:
-            logger.error("Invalid JSON in manifest at %s: %s", manifest_path, e)
-            self._report_model_status(
-                model_id, "failed", reason=f"Invalid manifest.json: {e}"
-            )
-            return
+        # Determine the model path for OVMS config (base_path in models_config.json).
+        # If the component is directly accessible, use that path; otherwise construct
+        # the path from OVMS's perspective inside its own snap.
+        if component_path:
+            model_path = component_path
+        else:
+            model_path = f"/snap/{self.SNAP_NAME}/components/x1/model-{model_id}"
 
-        # Build model metadata from manifest
-        local_path = os.path.join(self.snap_components_path, f"model-{model_id}")
         model_metadata = {
             "model_name": manifest.get("model_name"),
             "version": manifest.get("version"),
@@ -272,7 +341,7 @@ class ModelManagerCore:
             "output_names": manifest.get("output_names"),
             "input_shape": manifest.get("input_shape"),
             "labels_file": manifest.get("labels_file"),
-            "local_path": local_path,
+            "local_path": model_path,
         }
 
         logger.info(
@@ -281,6 +350,134 @@ class ModelManagerCore:
             json.dumps(model_metadata, indent=2),
         )
         self._report_model_status(model_id, "ready", model_metadata=model_metadata)
+
+    def _download_manifest_from_s3(self, model_id):
+        """Download manifest.json from S3 for a model component.
+
+        Convention: s3://<COMP_S3_BUCKET>/<COMP_S3_PREFIX>manifests/model-<model_id>.json
+
+        Args:
+            model_id: The model identifier.
+
+        Returns:
+            Parsed manifest dict, or None if download/parse fails.
+        """
+        if not self.comp_s3_bucket:
+            logger.error("Cannot download manifest: COMP_S3_BUCKET not configured")
+            return None
+
+        key = f"{self.comp_s3_prefix}manifests/model-{model_id}.json"
+        logger.info("Downloading manifest from s3://%s/%s", self.comp_s3_bucket, key)
+
+        try:
+            s3_client = boto3.client("s3")
+            response = s3_client.get_object(Bucket=self.comp_s3_bucket, Key=key)
+            manifest = json.loads(response["Body"].read().decode("utf-8"))
+            logger.info("Downloaded manifest for model '%s' from S3", model_id)
+            return manifest
+        except Exception as e:
+            logger.error("Failed to download manifest from S3 for '%s': %s", model_id, e)
+            return None
+
+    def _default_comp_s3_uri(self, component_name):
+        """Build the default S3 URI for a .comp file based on convention.
+
+        Convention: s3://<COMP_S3_BUCKET>/<COMP_S3_PREFIX><snap-name>+<component>.comp
+
+        Returns:
+            S3 URI string, or empty string if COMP_S3_BUCKET is not configured.
+        """
+        if not self.comp_s3_bucket:
+            return ""
+        return (
+            f"s3://{self.comp_s3_bucket}/{self.comp_s3_prefix}"
+            f"{self.SNAP_NAME}+{component_name}.comp"
+        )
+
+    def _download_comp_from_s3(self, s3_uri, component_name):
+        """Download a .comp file from S3 to a temporary local path.
+
+        Args:
+            s3_uri: S3 URI of the .comp file.
+            component_name: Component name (used for local filename).
+
+        Returns:
+            Local file path of the downloaded .comp file.
+
+        Raises:
+            Exception: If S3 download fails.
+        """
+        bucket, key = self._parse_s3_uri_to_key(s3_uri)
+        local_path = os.path.join("/tmp", f"{self.SNAP_NAME}+{component_name}.comp")
+
+        logger.info("Downloading component from s3://%s/%s to %s", bucket, key, local_path)
+        s3_client = boto3.client("s3")
+        s3_client.download_file(bucket, key, local_path)
+        logger.info("Downloaded component: %s (%.1f MB)", local_path, os.path.getsize(local_path) / 1048576)
+        return local_path
+
+    def _find_component_path(self, component_name):
+        """Find the installed path for a snap component.
+
+        Handles multiple path layouts depending on how the snap and component
+        were installed:
+        - Revision-relative: /snap/<snap>/components/<snap-rev>/<component>/
+        - Sideloaded mnt: /snap/<snap>/components/mnt/<component>/x<N>/
+        - Direct under SNAP_COMPONENTS: $SNAP_COMPONENTS/<component>/
+
+        Args:
+            component_name: The component name (e.g. 'model-faster-rcnn').
+
+        Returns:
+            Absolute path to the component directory, or None if not found.
+        """
+        snap_base = os.path.join("/snap", self.SNAP_NAME, "components")
+
+        # Try configured SNAP_COMPONENTS path (e.g. /snap/ovms-engine/components/x1)
+        configured_path = os.path.join(self.snap_components_path, component_name)
+        if os.path.isdir(configured_path):
+            logger.info("Found component at configured path: %s", configured_path)
+            return configured_path
+
+        # Try revision-relative: /snap/<snap>/components/x<N>/<component>/
+        rev_pattern = os.path.join(snap_base, "x*", component_name)
+        rev_matches = sorted(glob.glob(rev_pattern))
+        if rev_matches:
+            latest = rev_matches[-1]
+            logger.info("Found component at revision path: %s", latest)
+            return latest
+
+        # Try sideloaded mnt: /snap/<snap>/components/mnt/<component>/x<N>/
+        mnt_pattern = os.path.join(snap_base, "mnt", component_name, "x*")
+        mnt_matches = sorted(glob.glob(mnt_pattern))
+        if mnt_matches:
+            latest = mnt_matches[-1]
+            logger.info("Found component at sideloaded mnt path: %s", latest)
+            return latest
+
+        logger.error(
+            "Component '%s' not found under '%s' or '%s'",
+            component_name, snap_base, self.snap_components_path,
+        )
+        return None
+
+    @staticmethod
+    def _parse_s3_uri_to_key(s3_uri):
+        """Parse an S3 URI into bucket and key (without trailing slash normalisation).
+
+        Args:
+            s3_uri: URI in the format 's3://bucket-name/key/path'
+
+        Returns:
+            Tuple of (bucket, key).
+
+        Raises:
+            ValueError: If the URI format is invalid.
+        """
+        match = re.match(r"^s3://([^/]+)/(.+)$", s3_uri)
+        if not match:
+            raise ValueError(f"Invalid S3 URI: {s3_uri}")
+        return match.group(1), match.group(2)
 
     def _install_s3_model(self, model_id, s3_uri):
         """Download a model from S3 and read its manifest.
