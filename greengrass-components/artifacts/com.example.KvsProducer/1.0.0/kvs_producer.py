@@ -10,7 +10,7 @@ from awsiot.greengrasscoreipc.model import (
 from shadow_config import ShadowConfigManager, DEFAULT_CONFIG, KvsConfig
 from health_monitor import HealthMonitor
 from frame_annotator import FrameAnnotator, Detection, DetectionBox
-from gstreamer_pipeline import CapturePipeline, EncodingPipeline
+from gstreamer_pipeline import CapturePipeline, EncodingPipeline, TesCredentialProvider
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -19,6 +19,7 @@ HEALTH_PUBLISH_INTERVAL = 30
 ERROR_THRESHOLD_SECONDS = 60
 MAX_PIPELINE_RESTARTS = 3
 PIPELINE_RESTART_INTERVAL_SECONDS = 30
+RESTART_RESET_HEALTHY_SECONDS = 300  # reset restart counter after 5 min of healthy streaming
 SNAPSHOT_RETENTION_COUNT = 10
 
 
@@ -37,6 +38,9 @@ class KvsProducer:
         self._config = DEFAULT_CONFIG
         self._annotator = FrameAnnotator(
             staleness_window_seconds=self._config.staleness_window_seconds)
+        work_path = os.path.dirname(self._output_directory)
+        self._credential_path = os.path.join(work_path, "kvs_credentials")
+        self._credential_provider = TesCredentialProvider(self._credential_path)
         self._state_lock = threading.Lock()
         self._capture_pipeline = None
         self._encoding_pipeline = None
@@ -53,6 +57,9 @@ class KvsProducer:
             logger.error(
                 "No KVS stream name configured; set KVS_STREAM_NAME env var "
                 "or stream_name in the kvs-config device shadow")
+            sys.exit(1)
+        if not self._credential_provider.start():
+            logger.error("Failed to fetch TES credentials; aborting")
             sys.exit(1)
         self._subscribe_to_detections()
         self._subscribe_to_shadow_delta()
@@ -71,9 +78,17 @@ class KvsProducer:
                 self._check_pipeline_health()
                 time.sleep(1)
         except KeyboardInterrupt:
+            self._credential_provider.stop()
             self._stop_pipelines()
 
     def _check_pipeline_health(self):
+        now = time.time()
+        if (self._pipeline_restart_count > 0
+                and self._last_frame_sent_time > self._last_pipeline_restart
+                and now - self._last_pipeline_restart >= RESTART_RESET_HEALTHY_SECONDS):
+            logger.info("Resetting restart counter after %ds of healthy streaming",
+                        RESTART_RESET_HEALTHY_SECONDS)
+            self._pipeline_restart_count = 0
         capture_err = (self._capture_pipeline.pop_error()
                        if self._capture_pipeline else None)
         encoding_err = (self._encoding_pipeline.pop_error()
@@ -82,7 +97,6 @@ class KvsProducer:
             return
         logger.error("Pipeline error: %s", capture_err or encoding_err)
         self._health_monitor.set_status("error")
-        now = time.time()
         if self._pipeline_restart_count >= MAX_PIPELINE_RESTARTS:
             logger.error("Max pipeline restarts (%d) reached, giving up",
                          MAX_PIPELINE_RESTARTS)
@@ -109,7 +123,8 @@ class KvsProducer:
                     self._config.stream_name, self._region)
         self._encoding_pipeline = EncodingPipeline(
             self._config.stream_name, self._region,
-            self._config.frame_rate, w, h)
+            self._config.frame_rate, w, h,
+            credential_path=self._credential_path)
         logger.info("Starting encoding pipeline (kvssink)...")
         self._encoding_pipeline.start()
         logger.info("Encoding pipeline started, starting capture pipeline...")

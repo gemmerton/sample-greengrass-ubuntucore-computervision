@@ -1,43 +1,92 @@
 import gi
 gi.require_version("Gst", "1.0")
 from gi.repository import Gst
-import json, logging, os, sys, urllib.request, numpy as np, time
+import datetime, json, logging, os, sys, threading, urllib.request, numpy as np, time
 from typing import Callable, Optional
 
 logger = logging.getLogger(__name__)
 
 
-def _fetch_tes_credentials():
-    """Fetch temporary credentials from Greengrass TES and export as env vars.
+class TesCredentialProvider:
+    """Writes a KVS-format credential file from TES and refreshes it before expiry.
 
-    The KVS C Producer SDK reads AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY /
-    AWS_SESSION_TOKEN from the environment.  Greengrass TES provides them via
-    AWS_CONTAINER_CREDENTIALS_FULL_URI, which the KVS SDK does not support
-    natively, so we fetch them here before starting kvssink.
+    kvssink polls this file and re-reads it ~38s before the Expiration timestamp,
+    so credentials rotate without any pipeline restart.
+
+    File format: CREDENTIALS {AccessKeyId} {Expiration} {SecretAccessKey} {SessionToken}
     """
-    uri = os.environ.get("AWS_CONTAINER_CREDENTIALS_FULL_URI", "")
-    if not uri:
-        rel = os.environ.get("AWS_CONTAINER_CREDENTIALS_RELATIVE_URI", "")
-        if rel:
-            uri = f"http://127.0.0.1:2113{rel}"
-    if not uri:
-        print("TES: no credentials URI found in environment", file=sys.stderr, flush=True)
-        return False
-    token = os.environ.get("AWS_CONTAINER_AUTHORIZATION_TOKEN", "")
-    req = urllib.request.Request(uri)
-    if token:
-        req.add_header("Authorization", token)
-    try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            creds = json.loads(resp.read().decode())
-        os.environ["AWS_ACCESS_KEY_ID"] = creds["AccessKeyId"]
-        os.environ["AWS_SECRET_ACCESS_KEY"] = creds["SecretAccessKey"]
-        os.environ["AWS_SESSION_TOKEN"] = creds.get("Token", creds.get("SessionToken", ""))
-        print("TES: credentials fetched OK", file=sys.stderr, flush=True)
+
+    REFRESH_BEFORE_EXPIRY_SECONDS = 300  # refresh 5 min before expiry
+
+    def __init__(self, credential_path: str):
+        self._path = credential_path
+        self._stop_event = threading.Event()
+        self._thread: Optional[threading.Thread] = None
+        self._expiration: Optional[datetime.datetime] = None
+
+    @property
+    def path(self) -> str:
+        return self._path
+
+    def start(self) -> bool:
+        """Fetch initial credentials, write file, and start background refresh thread."""
+        if not self._fetch_and_write():
+            return False
+        self._thread = threading.Thread(
+            target=self._refresh_loop, daemon=True, name="tes-cred-refresh")
+        self._thread.start()
         return True
-    except Exception as exc:
-        print(f"TES: credential fetch failed: {exc}", file=sys.stderr, flush=True)
-        return False
+
+    def stop(self) -> None:
+        self._stop_event.set()
+
+    def _fetch_and_write(self) -> bool:
+        uri = os.environ.get("AWS_CONTAINER_CREDENTIALS_FULL_URI", "")
+        if not uri:
+            rel = os.environ.get("AWS_CONTAINER_CREDENTIALS_RELATIVE_URI", "")
+            if rel:
+                uri = f"http://127.0.0.1:2113{rel}"
+        if not uri:
+            print("TES: no credentials URI found", file=sys.stderr, flush=True)
+            return False
+        token = os.environ.get("AWS_CONTAINER_AUTHORIZATION_TOKEN", "")
+        req = urllib.request.Request(uri)
+        if token:
+            req.add_header("Authorization", token)
+        try:
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                creds = json.loads(resp.read().decode())
+            access_key = creds["AccessKeyId"]
+            secret_key = creds["SecretAccessKey"]
+            session_token = creds.get("Token", creds.get("SessionToken", ""))
+            expiration = creds.get("Expiration", "")
+            parent = os.path.dirname(self._path)
+            if parent:
+                os.makedirs(parent, exist_ok=True)
+            with open(self._path, "w") as f:
+                f.write(f"CREDENTIALS {access_key} {expiration} {secret_key} {session_token}\n")
+            if expiration:
+                self._expiration = datetime.datetime.fromisoformat(
+                    expiration.replace("Z", "+00:00"))
+            print(f"TES: credential file written (expires {expiration})",
+                  file=sys.stderr, flush=True)
+            return True
+        except Exception as exc:
+            print(f"TES: credential fetch/write failed: {exc}", file=sys.stderr, flush=True)
+            return False
+
+    def _refresh_loop(self) -> None:
+        while not self._stop_event.is_set():
+            if self._expiration:
+                now = datetime.datetime.now(datetime.timezone.utc)
+                refresh_at = self._expiration - datetime.timedelta(
+                    seconds=self.REFRESH_BEFORE_EXPIRY_SECONDS)
+                sleep_secs = max(30.0, (refresh_at - now).total_seconds())
+            else:
+                sleep_secs = 60.0
+            self._stop_event.wait(sleep_secs)
+            if not self._stop_event.is_set():
+                self._fetch_and_write()
 
 
 class CapturePipeline:
@@ -128,17 +177,19 @@ class CapturePipeline:
 class EncodingPipeline:
     """appsrc -> videoconvert -> x264enc -> h264parse -> kvssink.
 
-    kvssink reads credentials via AWS_CONTAINER_CREDENTIALS_RELATIVE_URI
-    set automatically by Greengrass for components with TokenExchangeService.
+    Credentials are supplied via a file written by TesCredentialProvider.
+    kvssink re-reads the file before the Expiration timestamp, so credentials
+    rotate without restarting the pipeline.
     """
 
     def __init__(self, stream_name: str, region: str, framerate: int,
-                 width: int, height: int):
+                 width: int, height: int, credential_path: str):
         self._stream_name = stream_name
         self._region = region
         self._framerate = framerate
         self._width = width
         self._height = height
+        self._credential_path = credential_path
         self._pipeline = None
         self._appsrc = None
 
@@ -146,10 +197,12 @@ class EncodingPipeline:
         print("EncodingPipeline.start: calling Gst.init()", file=sys.stderr, flush=True)
         Gst.init(None)
         print("EncodingPipeline.start: Gst.init() done", file=sys.stderr, flush=True)
-        _fetch_tes_credentials()
         # do-timestamp=true: auto-assigns PTS to every pushed buffer (required by kvssink)
         # key-int-max: forces a keyframe every 2s so the player can start mid-stream
         # config-interval=-1: repeats SPS/PPS before every keyframe for player init
+        # video/x-raw,format=I420: prevents x264enc choosing Hi444PP (profile_idc=244)
+        #   which KVS rejects; forces Baseline/Main/High-compatible YUV 4:2:0
+        # credential-path: kvssink reads and refreshes credentials from this file
         pipeline_str = (
             f"appsrc name=src format=time is-live=true do-timestamp=true "
             f"caps=video/x-raw,format=BGR,width={self._width},"
@@ -157,7 +210,8 @@ class EncodingPipeline:
             f"! videoconvert ! video/x-raw,format=I420 ! x264enc tune=zerolatency key-int-max={self._framerate * 2} "
             f"! h264parse config-interval=-1 "
             f"! kvssink stream-name={self._stream_name} "
-            f"aws-region={self._region}"
+            f"aws-region={self._region} "
+            f"credential-path={self._credential_path}"
         )
         print("EncodingPipeline.start: calling Gst.parse_launch()", file=sys.stderr, flush=True)
         self._pipeline = Gst.parse_launch(pipeline_str)
