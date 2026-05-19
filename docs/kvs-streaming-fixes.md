@@ -137,31 +137,31 @@ appsrc name=src format=time is-live=true do-timestamp=true
 
 ---
 
-## Known Remaining Issues
+## Previously Known Issues — All Resolved
 
-The following are known issues that do not block streaming but will cause problems in production. See [`docs/kvs-producer-root-cause-analysis.md`](kvs-producer-root-cause-analysis.md) for full analysis.
+All production reliability issues identified at initial streaming milestone have been fixed (commit `5e51ea6`, 2026-05-19).
 
-### 1. TES credential expiry — no automatic refresh (~1 hour limit)
+### ✅ Fix 11: TES credential refresh via credential file
 
-`gstreamer_pipeline.py` fetches TES credentials once at startup and sets them as environment variables. kvssink reads these once at element construction (`Gst.parse_launch`) and uses a `StaticCredentialProvider` that does not refresh. When TES credentials expire (typically 15–60 minutes), KVS API calls fail with 401, the pipeline errors, and `_check_pipeline_health` triggers a restart (which re-fetches credentials).
+**Was:** `gstreamer_pipeline.py` fetched TES credentials once at startup, set them as env vars, and kvssink used a `StaticCredentialProvider` that never refreshed. Credential expiry (~15–60 min) triggered a pipeline restart. With `MAX_PIPELINE_RESTARTS = 3`, a 24/7 device would go permanently dark within 3–4 hours.
 
-**Risk:** `MAX_PIPELINE_RESTARTS = 3`. After 3 credential-expiry restarts, the component gives up permanently. On a device that runs 24/7, this exhausts within 3–4 hours.
-
-**Correct fix:** Use kvssink's `credential-path` property pointing to a file that a background thread refreshes from TES before expiry. The credential file format is:
+**Fix:** Replaced with `TesCredentialProvider` class. On startup it writes a KVS credential file at `{work:path}/kvs_credentials`:
 ```
 CREDENTIALS {AccessKeyId} {Expiration} {SecretAccessKey} {SessionToken}
 ```
-kvssink re-reads this file when credentials approach expiry (~38s before the `Expiration` timestamp).
+A daemon thread wakes 5 minutes before the `Expiration` timestamp and rewrites the file. kvssink reads the `credential-path=` property and re-reads the file ~38s before expiry — credentials rotate with zero pipeline restarts.
 
-### 2. Pipeline restart counter never resets
+### ✅ Fix 12: Pipeline restart counter reset after sustained healthy streaming
 
-`_pipeline_restart_count` in `kvs_producer.py` increments on each restart but is never reset, even after sustained healthy streaming. A transient camera glitch (restart 1) + codec hiccup (restart 2) + one credential expiry (restart 3) exhausts the budget in under an hour regardless of how long the stream ran between events.
+**Was:** `_pipeline_restart_count` incremented on every restart but was never reset. Unrelated transient errors spread over hours of uptime could exhaust `MAX_PIPELINE_RESTARTS = 3`.
 
-**Fix:** Reset `_pipeline_restart_count = 0` in the main loop after the pipeline has been streaming successfully for `ERROR_THRESHOLD_SECONDS`.
+**Fix:** `_check_pipeline_health` now resets `_pipeline_restart_count = 0` after `RESTART_RESET_HEALTHY_SECONDS` (300 s) of healthy streaming since the last restart.
 
-### 3. `kvs_log_configuration` not found at runtime CWD
+### ✅ Fix 13: KVS SDK log configuration
 
-The KVS SDK looks for `kvs_log_configuration` in the current working directory. The Run script does `cd {work:path}/run`, but the file is copied to `{work:path}/kvs_log_configuration`. The SDK falls back to DEBUG-level logging, generating high log volume. Set `KVS_LOG4CPLUS_CONFIG={work:path}/kvs_log_configuration` in the Run script to fix this.
+**Was:** The KVS SDK searched for `kvs_log_configuration` in the CWD (`{work:path}/run`), but the file lived at `{work:path}/kvs_log_configuration`. The SDK fell back to DEBUG logging, generating very high log volume.
+
+**Fix:** Added `export KVS_LOG4CPLUS_CONFIG="{work:path}/kvs_log_configuration"` to the component Run script.
 
 ---
 
