@@ -116,7 +116,7 @@ Manifests:
           export ORC_CODE=backup && \
           export GI_TYPELIB_PATH="${GST_KVS_MOUNT}/lib/girepository-1.0" && \
           export GST_PLUGIN_SCANNER="{work:path}/gst-plugins/gst-plugin-scanner" && \
-          export PYTHONPATH="${GST_KVS_MOUNT}/lib/python3" && \
+          export PYTHONPATH="${GST_KVS_MOUNT}/lib/python3${PYTHONPATH:+:${PYTHONPATH}}" && \
           export GST_REGISTRY_PATH="{work:path}/gst-registry" && \
           export WORK_PATH="{work:path}/snapshots" && \
           export AWS_DEFAULT_REGION="{configuration:/Region}" && \
