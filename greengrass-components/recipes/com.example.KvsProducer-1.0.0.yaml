@@ -110,6 +110,7 @@ Manifests:
           export LD_LIBRARY_PATH="${GST_KVS_MOUNT}/lib" && \
           export GST_PLUGIN_PATH="{work:path}/gst-plugins" && \
           export GST_PLUGIN_SYSTEM_PATH_1_0="" && \
+          export ORC_CODE=backup && \
           export GI_TYPELIB_PATH="${GST_KVS_MOUNT}/lib/girepository-1.0" && \
           export GST_PLUGIN_SCANNER="{work:path}/gst-plugins/gst-plugin-scanner" && \
           export PYTHONPATH="${GST_KVS_MOUNT}/lib/python3" && \
