@@ -3,9 +3,9 @@
 # Starts OVMS with GPU device plugin and config file polling for dynamic
 # model management via Greengrass.
 
-grpc_port="$(modelctl get grpc.port)"
-http_port="$(modelctl get http.port)"
-poll_seconds="$(modelctl get config.poll_seconds)"
+grpc_port="$(modelctl get grpc.port 2>/dev/null || echo 9000)"
+http_port="$(modelctl get http.port 2>/dev/null || echo 9001)"
+poll_seconds="$(modelctl get config.poll_seconds 2>/dev/null || echo 5)"
 
 exec "$SNAP_COMPONENTS/ovms-gpu/usr/bin/ovms" \
     --config_path "$SNAP_COMMON/config/models_config.json" \
