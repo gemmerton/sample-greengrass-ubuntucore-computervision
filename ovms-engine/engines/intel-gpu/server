@@ -11,5 +11,4 @@ exec "$SNAP_COMPONENTS/ovms-gpu/usr/bin/ovms" \
     --config_path "$SNAP_COMMON/config/models_config.json" \
     --port "$grpc_port" \
     --rest_port "$http_port" \
-    --file_system_poll_wait_seconds "$poll_seconds" \
-    --target_device GPU
+    --file_system_poll_wait_seconds "$poll_seconds"
