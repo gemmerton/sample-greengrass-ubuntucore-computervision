@@ -55,6 +55,10 @@ Camera (/dev/video0)
 5. Reports `reported.active_model = "<model-id>"` to shadow
 6. React UI polls shadow, sees reported matches desired → confirms switch
 
+**Ownership:** InferenceHandler exclusively owns `active_model`. ModelManagerCore
+ignores `active_model` deltas — it only handles model install/remove (the
+`models` field). This prevents shadow write races between the two components.
+
 ### Startup priority for active model
 
 On restart/deployment, InferenceHandler uses this priority chain:
@@ -108,6 +112,8 @@ s3://gg-ge-test/components/
 5. ~~Component path resolution~~: snapd API query for sideloaded revision
 6. ~~Camera contention~~: InferenceHandler reads KvsProducer snapshots
 7. ~~Model switch reliability~~: Proper priority chain + delta-driven switching
+8. ~~Shadow race condition~~: ModelManagerCore no longer handles active_model
+   (was competing with InferenceHandler, causing stale reported state)
 
 ## Known issues
 
