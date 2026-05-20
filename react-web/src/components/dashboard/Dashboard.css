@@ -13,6 +13,7 @@
 .dashboard__main {
   flex: 1;
   padding: var(--spacing-lg) 0;
+  padding-top: calc(var(--header-height) + var(--spacing-lg));
 }
 
 .dashboard__container {
@@ -335,7 +336,7 @@
 
 .dashboard__drawer-tab {
   position: fixed;
-  top: 50%;
+  top: calc(var(--header-height) + (100vh - var(--header-height)) / 2);
   right: 0;
   transform: translateY(-50%);
   z-index: 100;
@@ -415,10 +416,10 @@
 
 .dashboard__drawer {
   position: fixed;
-  top: 0;
+  top: var(--header-height);
   right: -400px;
   width: 400px;
-  height: 100vh;
+  height: calc(100vh - var(--header-height));
   z-index: 99;
   background: var(--color-card-bg);
   border-left: 2px solid rgba(59, 130, 246, 0.4);
@@ -505,6 +506,7 @@
 
   .dashboard__main {
     padding: var(--spacing-md) 0;
+    padding-top: calc(var(--header-height) + var(--spacing-md));
   }
 
   .dashboard__grid {
@@ -547,6 +549,7 @@
 
   .dashboard__main {
     padding: var(--spacing-sm) 0;
+    padding-top: calc(var(--header-height) + var(--spacing-sm));
   }
 
   .dashboard__card {
