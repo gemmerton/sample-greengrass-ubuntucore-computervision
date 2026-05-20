@@ -209,15 +209,14 @@ class GreengrassDeployer:
                 recipe_data['ComponentConfiguration']['DefaultConfiguration']['S3BucketName'] = self.s3_bucket
                 print(f"Updated S3BucketName to: {self.s3_bucket}")
 
-        # Collect non-accessControl DefaultConfiguration values to propagate
-        # via configurationUpdate.merge at deploy time. Without this, changing
-        # DefaultConfiguration in a recipe has no effect on devices that already
-        # have an older value stored in config.tlog.
+        # Collect DefaultConfiguration values to propagate via
+        # configurationUpdate.merge at deploy time. This includes accessControl
+        # so that permission changes in recipes take effect on devices that
+        # already have an older config in config.tlog.
         default_config = {}
         cfg = recipe_data.get('ComponentConfiguration', {}).get('DefaultConfiguration', {})
         for k, v in cfg.items():
-            if k != 'accessControl':
-                default_config[k] = v
+            default_config[k] = v
 
         # Create component
         try:
