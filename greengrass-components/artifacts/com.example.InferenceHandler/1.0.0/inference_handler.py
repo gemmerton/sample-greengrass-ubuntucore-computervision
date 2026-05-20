@@ -46,7 +46,6 @@ class InferenceHandler:
         self._subscribe_to_shadow_delta()
         self._load_active_model()
 
-        cycle_count = 0
         while True:
             if self.model_metadata is None:
                 logger.info("No active model, waiting...")
@@ -59,10 +58,6 @@ class InferenceHandler:
             except Exception as e:
                 logger.error("Inference cycle failed: %s", e)
                 traceback.print_exc()
-
-            cycle_count += 1
-            if cycle_count % 10 == 0:
-                self._report_active_model()
 
             time.sleep(self.inference_interval)
 
@@ -97,9 +92,15 @@ class InferenceHandler:
             logger.error("Failed to handle shadow delta: %s", e)
 
     def _switch_to_model(self, model_id):
+        """Handle an explicit model switch request from shadow delta.
+
+        Reads model metadata from reported state, switches, and reports back.
+        """
         if not self.thing_name or not model_id:
             return
         if model_id == self.active_model_id:
+            logger.info("Model '%s' already active, confirming in shadow", model_id)
+            self._report_active_model()
             return
         try:
             response = self.ipc_client.get_thing_shadow(
@@ -109,22 +110,30 @@ class InferenceHandler:
             reported = shadow.get("state", {}).get("reported", {})
             models = reported.get("models", {})
             if model_id not in models:
-                logger.warning("Model '%s' not in reported models", model_id)
+                logger.warning("Model '%s' not in reported models, cannot switch", model_id)
                 return
             entry = models[model_id]
             if entry.get("status") != "ready":
-                logger.warning("Model '%s' not ready (status=%s)", model_id, entry.get("status"))
+                logger.warning("Model '%s' not ready (status=%s), cannot switch", model_id, entry.get("status"))
                 return
             metadata = entry.get("model_metadata", {})
             logger.info("Active model changed: %s -> %s", self.active_model_id, model_id)
             self.active_model_id = model_id
             self.model_metadata = metadata
-            logger.info("Model metadata: %s", json.dumps(metadata, indent=2))
             self._report_active_model()
         except Exception as e:
             logger.error("Failed to switch to model '%s': %s", model_id, e)
 
     def _load_active_model(self):
+        """Determine which model to use on startup or when polling.
+
+        Priority:
+        1. desired.active_model (user explicitly requested via UI)
+        2. reported.active_model (persisted from previous run, survives restarts)
+        3. First ready model (cold start, nothing ever set)
+
+        Only reports back to shadow if the active model actually changes.
+        """
         if not self.thing_name:
             return
         try:
@@ -135,10 +144,6 @@ class InferenceHandler:
             reported = shadow.get("state", {}).get("reported", {})
             desired = shadow.get("state", {}).get("desired", {})
 
-            target_model_id = desired.get("active_model")
-            logger.info("Loading model: desired.active_model=%s, current=%s",
-                        target_model_id, self.active_model_id)
-
             models = reported.get("models", {})
             if not models:
                 logger.info("No models in reported state")
@@ -146,22 +151,33 @@ class InferenceHandler:
                 self.active_model_id = None
                 return
 
-            if target_model_id and target_model_id in models:
-                entry = models[target_model_id]
-            elif self.active_model_id and self.active_model_id in models:
-                target_model_id = self.active_model_id
-                entry = models[target_model_id]
-            else:
+            # Determine target model using priority chain
+            target_model_id = None
+
+            # Priority 1: desired.active_model (explicit user request)
+            desired_model = desired.get("active_model")
+            if desired_model and desired_model in models:
+                target_model_id = desired_model
+
+            # Priority 2: reported.active_model (persisted truth from last run)
+            if not target_model_id:
+                reported_model = reported.get("active_model")
+                if reported_model and reported_model in models:
+                    target_model_id = reported_model
+
+            # Priority 3: first ready model (cold start)
+            if not target_model_id:
                 target_model_id = next(
                     (mid for mid, m in models.items() if m.get("status") == "ready"),
                     None,
                 )
-                if not target_model_id:
-                    self.model_metadata = None
-                    self.active_model_id = None
-                    return
-                entry = models[target_model_id]
 
+            if not target_model_id:
+                self.model_metadata = None
+                self.active_model_id = None
+                return
+
+            entry = models[target_model_id]
             if entry.get("status") != "ready":
                 logger.info("Model '%s' not ready (status=%s)", target_model_id, entry.get("status"))
                 self.model_metadata = None
@@ -175,6 +191,9 @@ class InferenceHandler:
                 self.model_metadata = metadata
                 logger.info("Model metadata: %s", json.dumps(metadata, indent=2))
                 self._report_active_model()
+            elif self.model_metadata is None:
+                # Same model but metadata not loaded (first run)
+                self.model_metadata = metadata
         except Exception as e:
             logger.error("Failed to load active model from shadow: %s", e)
             traceback.print_exc()
