@@ -1,0 +1,70 @@
+---
+RecipeFormatVersion: '2020-01-25'
+ComponentName: com.example.InferenceHandler
+ComponentVersion: '1.0.0'
+ComponentDescription: 'Unified inference handler - captures frames, runs OVMS inference, publishes results via MQTT'
+ComponentPublisher: AWS
+ComponentDependencies:
+  aws.greengrass.ShadowManager:
+    VersionRequirement: '^2.0.0'
+  aws.greengrass.TokenExchangeService:
+    VersionRequirement: '^2.0.0'
+ComponentConfiguration:
+  DefaultConfiguration:
+    CameraDevice: "/dev/video1"
+    OvmsGrpcUrl: "localhost:9000"
+    InferenceInterval: "1.0"
+    ConfidenceThreshold: "0.5"
+    PubTopic: "camera/inference"
+    accessControl:
+      aws.greengrass.ShadowManager:
+        com.example.InferenceHandler:shadow:1:
+          policyDescription: 'Read model-config shadow for active model metadata'
+          operations:
+            - 'aws.greengrass#GetThingShadow'
+          resources:
+            - '$aws/things/*/shadow/name/model-config'
+      aws.greengrass.ipc.mqttproxy:
+        com.example.InferenceHandler:mqttproxy:1:
+          policyDescription: 'Publish inference results to IoT Core'
+          operations:
+            - 'aws.greengrass#PublishToIoTCore'
+          resources:
+            - 'camera/inference'
+        com.example.InferenceHandler:mqttproxy:2:
+          policyDescription: 'Subscribe to model-config shadow delta for live config changes'
+          operations:
+            - 'aws.greengrass#SubscribeToIoTCore'
+          resources:
+            - '$aws/things/*/shadow/name/model-config/update/delta'
+Manifests:
+- Platform:
+    os: all
+    runtime: '*'
+  Lifecycle:
+    Install:
+      Script: |
+        /bin/bash -c 'set -e && \
+        python3 -m venv --without-pip venv/ && \
+        source venv/bin/activate && \
+        python3 {artifacts:path}/get-pip.py && \
+        python3 -m pip install -r {artifacts:path}/requirements.txt && \
+        deactivate'
+    Run:
+      Script: |
+        /bin/bash -c 'set -e && \
+        source venv/bin/activate && \
+        export AWS_IOT_THING_NAME="{iot:thingName}" && \
+        export CAMERA_DEVICE="{configuration:/CameraDevice}" && \
+        export OVMS_GRPC_URL="{configuration:/OvmsGrpcUrl}" && \
+        export INFERENCE_INTERVAL="{configuration:/InferenceInterval}" && \
+        export CONFIDENCE_THRESHOLD="{configuration:/ConfidenceThreshold}" && \
+        export PUB_TOPIC="{configuration:/PubTopic}" && \
+        python3 {artifacts:path}/inference_handler.py'
+  Artifacts:
+    - Uri: inference_handler.py
+      Unarchive: NONE
+    - Uri: get-pip.py
+      Unarchive: NONE
+    - Uri: requirements.txt
+      Unarchive: NONE
