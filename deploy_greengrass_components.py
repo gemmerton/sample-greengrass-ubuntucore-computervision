@@ -329,16 +329,21 @@ class GreengrassDeployer:
         if 'aws.greengrass.ShadowManager' in component_config:
             import json as _json
             sync_config = _json.dumps({
+                "strategy": {
+                    "type": "realTime"
+                },
                 "synchronize": {
                     "coreThing": {
+                        "classic": True,
                         "namedShadows": ["kvs-config", "model-config"]
-                    }
+                    },
+                    "direction": "betweenDeviceAndCloud"
                 }
             })
             component_config['aws.greengrass.ShadowManager']['configurationUpdate'] = {
                 'merge': sync_config
             }
-            print("Configured ShadowManager to sync named shadows: kvs-config, model-config")
+            print("Configured ShadowManager: realTime bidirectional sync for named shadows")
 
         try:
             response = self.greengrass_client.create_deployment(
