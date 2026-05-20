@@ -193,13 +193,15 @@ class InferenceHandler:
             logger.warning("Failed to report active_model: %s", e)
 
     def _open_camera(self):
-        if self.camera_device != "auto":
+        if self.camera_device not in ("auto", ""):
             cap = cv2.VideoCapture(self.camera_device)
             if cap.isOpened():
                 return cap
             logger.warning("Cannot open configured camera %s, trying auto-detect", self.camera_device)
 
-        for i in range(8):
+        # Scan even-indexed devices first (index0 is typically used by KvsProducer,
+        # index2 is the second capture-capable node on multi-stream USB cameras)
+        for i in [2, 4, 6, 0, 1, 3, 5, 7]:
             dev = f"/dev/video{i}"
             cap = cv2.VideoCapture(dev)
             if cap.isOpened():
