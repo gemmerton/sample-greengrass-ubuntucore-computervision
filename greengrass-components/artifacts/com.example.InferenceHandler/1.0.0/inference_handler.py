@@ -256,12 +256,14 @@ class InferenceHandler:
     def _postprocess_classification(self, result, inference_time_ms):
         output = None
         for key, val in result.items():
-            output = val
-            break
-        if output is None:
+            squeezed = np.squeeze(val)
+            if squeezed.ndim >= 1 and squeezed.size > 1:
+                if output is None or squeezed.size > output.size:
+                    output = squeezed
+        if output is None or output.ndim == 0:
             return None
 
-        probs = np.squeeze(output)
+        probs = output
         top_k = 5
         top_indices = np.argsort(probs)[::-1][:top_k]
         classifications = []
