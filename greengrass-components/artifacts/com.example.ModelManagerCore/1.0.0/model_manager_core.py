@@ -327,12 +327,18 @@ class ModelManagerCore:
             return
 
         # Determine the model path for OVMS config (base_path in models_config.json).
-        # If the component is directly accessible, use that path; otherwise construct
-        # the path from OVMS's perspective inside its own snap.
         if component_path:
             model_path = component_path
         else:
-            model_path = f"/snap/{self.SNAP_NAME}/components/x1/model-{model_id}"
+            logger.error(
+                "Cannot determine model path for '%s' - component not found via "
+                "filesystem or snapd API", model_id
+            )
+            self._report_model_status(
+                model_id, "failed",
+                reason=f"Cannot resolve component path for model-{model_id}",
+            )
+            return
 
         model_metadata = {
             "model_name": manifest.get("model_name"),
@@ -424,6 +430,7 @@ class ModelManagerCore:
         - Revision-relative: /snap/<snap>/components/<snap-rev>/<component>/
         - Sideloaded mnt: /snap/<snap>/components/mnt/<component>/x<N>/
         - Direct under SNAP_COMPONENTS: $SNAP_COMPONENTS/<component>/
+        - Via snapd API: query component revision and construct mnt path
 
         Args:
             component_name: The component name (e.g. 'model-faster-rcnn').
@@ -454,6 +461,24 @@ class ModelManagerCore:
             latest = mnt_matches[-1]
             logger.info("Found component at sideloaded mnt path: %s", latest)
             return latest
+
+        # Filesystem-based lookups may fail due to snap confinement (one snap
+        # cannot access another snap's mnt/ directory). Query the snapd API for
+        # the component's installed revision and construct the path directly.
+        try:
+            comp_revision = self.snapd.get_component_revision(
+                self.SNAP_NAME, component_name
+            )
+            if comp_revision:
+                mnt_path = os.path.join(
+                    snap_base, "mnt", component_name, comp_revision
+                )
+                logger.info(
+                    "Resolved component path via snapd API: %s", mnt_path
+                )
+                return mnt_path
+        except Exception as e:
+            logger.warning("Failed to query snapd for component revision: %s", e)
 
         logger.error(
             "Component '%s' not found under '%s' or '%s'",

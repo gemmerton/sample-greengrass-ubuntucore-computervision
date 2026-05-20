@@ -120,6 +120,25 @@ class SnapdClient:
             f"Snap operation timed out after {timeout}s (change {change_id})"
         )
 
+    def get_component_revision(self, snap_name, component_name):
+        """Query snapd for the installed revision of a snap component.
+
+        Args:
+            snap_name: The host snap name (e.g., 'ovms-engine')
+            component_name: The component name (e.g., 'model-faster-rcnn')
+
+        Returns:
+            The revision string (e.g., 'x1') or None if not installed.
+        """
+        data = self._request("GET", f"/{SNAPD_API_VERSION}/snaps/{snap_name}")
+        components = data.get("result", {}).get("components", [])
+        for comp in components:
+            if comp.get("name") == component_name:
+                rev = comp.get("revision")
+                if rev and rev != "unset":
+                    return rev
+        return None
+
     def install_component(self, snap_name, component_name, timeout=300):
         """Install a component of an already-installed snap.
 
