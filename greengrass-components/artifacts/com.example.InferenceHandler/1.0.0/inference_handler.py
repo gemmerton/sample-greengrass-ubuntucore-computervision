@@ -94,13 +94,13 @@ class InferenceHandler:
     def _switch_to_model(self, model_id):
         """Handle an explicit model switch request from shadow delta.
 
-        Reads model metadata from reported state, switches, and reports back.
+        Reads model metadata from reported state, switches, reports back,
+        and clears desired.active_model to prevent delta feedback loops.
         """
         if not self.thing_name or not model_id:
             return
         if model_id == self.active_model_id:
-            logger.info("Model '%s' already active, confirming in shadow", model_id)
-            self._report_active_model()
+            self._report_and_clear_desired()
             return
         try:
             response = self.ipc_client.get_thing_shadow(
@@ -120,9 +120,33 @@ class InferenceHandler:
             logger.info("Active model changed: %s -> %s", self.active_model_id, model_id)
             self.active_model_id = model_id
             self.model_metadata = metadata
-            self._report_active_model()
+            self._report_and_clear_desired()
         except Exception as e:
             logger.error("Failed to switch to model '%s': %s", model_id, e)
+
+    def _report_and_clear_desired(self):
+        """Report active_model and clear desired.active_model in one write.
+
+        Setting reported = desired eliminates the delta. Setting desired to
+        null signals the request has been processed.
+        """
+        if not self.thing_name or not self.active_model_id:
+            return
+        try:
+            payload = json.dumps({
+                "state": {
+                    "reported": {"active_model": self.active_model_id},
+                    "desired": {"active_model": None},
+                }
+            }).encode("utf-8")
+            self.ipc_client.update_thing_shadow(
+                thing_name=self.thing_name,
+                shadow_name=SHADOW_NAME,
+                payload=payload,
+            )
+            logger.info("Reported active_model=%s and cleared desired", self.active_model_id)
+        except Exception as e:
+            logger.warning("Failed to report active_model: %s", e)
 
     def _load_active_model(self):
         """Determine which model to use on startup or when polling.
@@ -199,24 +223,7 @@ class InferenceHandler:
             traceback.print_exc()
 
     def _report_active_model(self):
-        if not self.thing_name or not self.active_model_id:
-            return
-        try:
-            payload = json.dumps({
-                "state": {
-                    "reported": {
-                        "active_model": self.active_model_id
-                    }
-                }
-            }).encode("utf-8")
-            self.ipc_client.update_thing_shadow(
-                thing_name=self.thing_name,
-                shadow_name=SHADOW_NAME,
-                payload=payload,
-            )
-            logger.info("Reported active_model=%s to shadow", self.active_model_id)
-        except Exception as e:
-            logger.warning("Failed to report active_model: %s", e)
+        self._report_and_clear_desired()
 
     def _get_frame(self):
         snapshot_dir = os.environ.get(
