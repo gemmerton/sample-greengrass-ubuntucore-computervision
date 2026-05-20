@@ -7,6 +7,7 @@ grpc_port="$(modelctl get grpc.port 2>/dev/null || echo 9000)"
 http_port="$(modelctl get http.port 2>/dev/null || echo 9001)"
 poll_seconds="$(modelctl get config.poll_seconds 2>/dev/null || echo 5)"
 
+export LD_LIBRARY_PATH="$SNAP_COMPONENTS/ovms-gpu/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 export PYTHONHOME="$SNAP_COMPONENTS/ovms-gpu/usr/lib"
 export PYTHONPATH="$SNAP_COMPONENTS/ovms-gpu/usr/lib/python3.10"
 
