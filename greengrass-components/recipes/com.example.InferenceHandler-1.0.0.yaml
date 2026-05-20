@@ -11,7 +11,7 @@ ComponentDependencies:
     VersionRequirement: '^2.0.0'
 ComponentConfiguration:
   DefaultConfiguration:
-    CameraDevice: "/dev/video2"
+    CameraDevice: "auto"
     OvmsGrpcUrl: "localhost:9000"
     InferenceInterval: "1.0"
     ConfidenceThreshold: "0.5"

@@ -192,12 +192,30 @@ class InferenceHandler:
         except Exception as e:
             logger.warning("Failed to report active_model: %s", e)
 
+    def _open_camera(self):
+        if self.camera_device != "auto":
+            cap = cv2.VideoCapture(self.camera_device)
+            if cap.isOpened():
+                return cap
+            logger.warning("Cannot open configured camera %s, trying auto-detect", self.camera_device)
+
+        for i in range(8):
+            dev = f"/dev/video{i}"
+            cap = cv2.VideoCapture(dev)
+            if cap.isOpened():
+                ret, _ = cap.read()
+                if ret:
+                    logger.info("Auto-detected capture device: %s", dev)
+                    self.camera_device = dev
+                    return cap
+                cap.release()
+        return None
+
     def _capture_and_infer(self):
         if self.cap is None or not self.cap.isOpened():
-            self.cap = cv2.VideoCapture(self.camera_device)
-            if not self.cap.isOpened():
-                logger.error("Cannot open camera: %s", self.camera_device)
-                self.cap = None
+            self.cap = self._open_camera()
+            if self.cap is None:
+                logger.error("No camera available")
                 return
 
         ret, frame = self.cap.read()
