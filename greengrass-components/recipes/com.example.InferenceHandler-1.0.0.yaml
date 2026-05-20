@@ -60,6 +60,7 @@ Manifests:
         export INFERENCE_INTERVAL="{configuration:/InferenceInterval}" && \
         export CONFIDENCE_THRESHOLD="{configuration:/ConfidenceThreshold}" && \
         export PUB_TOPIC="{configuration:/PubTopic}" && \
+        export PYTHONUNBUFFERED=1 && \
         python3 {artifacts:path}/inference_handler.py'
   Artifacts:
     - Uri: inference_handler.py

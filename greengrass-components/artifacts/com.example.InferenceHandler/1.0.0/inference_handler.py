@@ -296,8 +296,10 @@ class InferenceHandler:
                 qos="1",
                 payload=encoded,
             )
-            logger.debug("Published to %s: %s detections/classifications",
-                         self.pub_topic, payload.get("results", {}).get("count", "?"))
+            logger.info("Published to %s (%s: %s results, %sms)",
+                       self.pub_topic, payload.get("result_type"),
+                       payload.get("results", {}).get("count", len(payload.get("results", {}).get("classifications", []))),
+                       payload.get("inference_time_ms"))
         except Exception as e:
             logger.error("Failed to publish inference results: %s", e)
 
