@@ -65,11 +65,25 @@ chmod +x ./ovms
 echo "Extracting OVMS libraries..."
 docker cp "${CONTAINER_NAME}:/ovms/lib/" ./lib/
 
-# Extract system libraries not present in core24
-echo "Extracting system libraries (${#SYSTEM_LIBS[@]} files)..."
+# Extract system libraries not present in core24.
+# Many of these are symlinks (e.g. libxml2.so.2 -> libxml2.so.2.9.13).
+# `docker cp` copies symlinks as-is without their targets, so we use a
+# separate `docker run` with tar --dereference to get real files.
+echo "Extracting system libraries (${#SYSTEM_LIBS[@]} files, dereferencing symlinks)..."
+LIB_PATHS=""
 for lib in "${SYSTEM_LIBS[@]}"; do
-    docker cp "${CONTAINER_NAME}:/lib/x86_64-linux-gnu/${lib}" "./lib/${lib}"
-    echo "  ${lib}"
+    LIB_PATHS="${LIB_PATHS} lib/x86_64-linux-gnu/${lib}"
+done
+docker run --rm --entrypoint tar "${OVMS_IMAGE}" \
+    ch --dereference -C / ${LIB_PATHS} \
+    | tar x --strip-components=2 -C ./lib/
+for lib in "${SYSTEM_LIBS[@]}"; do
+    if [ -f "./lib/${lib}" ] && [ ! -L "./lib/${lib}" ]; then
+        echo "  ${lib} ($(du -h ./lib/${lib} | cut -f1))"
+    else
+        echo "  ERROR: ${lib} not extracted as a regular file!"
+        exit 1
+    fi
 done
 
 echo ""
