@@ -1,11 +1,10 @@
 # Model Management - Status & Next Steps
 
-## Status: OVMS serving inference, content interface broken (2026-05-20)
+## Status: Full pipeline working end-to-end (2026-05-20)
 
-The full model management pipeline is working from cloud shadow through to OVMS
-serving inference — with one critical gap: the snap content interface between
-Greengrass and ovms-engine is not relaying config files, so OVMS doesn't pick
-up model changes written by ModelManagerCore.
+The full model management pipeline is operational: shadow desired state triggers
+model download from S3, sideload via snapd, OVMS config written via content
+interface, and OVMS loads the model for inference on gRPC/REST.
 
 ### What works
 
@@ -23,31 +22,14 @@ up model changes written by ModelManagerCore.
 6. **S3 manifest fallback**: Reads model metadata from S3 when snap confinement
    prevents direct file access to the sideloaded component path
 
-### What does NOT work
+### Notes on content interface
 
-1. **Content interface not relaying config to OVMS** (BLOCKING):
-   ModelManagerCore writes `models_config.json` to
-   `/var/snap/aws-iot-greengrass/current/ovms-engine-config/` (the Greengrass
-   side of the `inference-config` content interface). This should appear at
-   `/var/snap/ovms-engine/common/config/` (where OVMS reads). It does not.
-   Writes to the Greengrass side are invisible to OVMS. Disconnecting and
-   reconnecting the interface doesn't fix it.
-
-   **Impact**: Model switching doesn't work. When ModelManagerCore installs a
-   new model and regenerates the OVMS config, OVMS never sees the update. The
-   demo requires hot-swapping models via the shadow, so this must be fixed.
-
-   **Workaround applied today**: Wrote the config directly to
-   `/var/snap/ovms-engine/common/config/models_config.json` — this proved
-   inference works but is not a viable solution for the demo.
-
-2. **Model base_path uses stale snap revision**: The ModelManagerCore config
-   `SnapComponentsPath` is set to `/snap/ovms-engine/components/x1` but the
-   snap is now at a higher revision. Sideloaded model components go to
-   `/snap/ovms-engine/components/mnt/model-<id>/x<N>`. The `_find_component_path`
-   logic handles this via fallback search, but the `base_path` written to the
-   OVMS config may not match what OVMS can access from within its snap
-   confinement.
+The snap content interface between Greengrass and ovms-engine works correctly.
+Writes from **inside** the Greengrass snap namespace (where ModelManagerCore
+runs) go through the bind mount to `/var/snap/ovms-engine/common/config/`.
+Writes from **outside** the snap namespace (e.g., direct `tee` from SSH) go to
+the local directory and bypass the mount — this caused confusion during
+debugging but does not affect production operation.
 
 ### S3 bucket layout
 
@@ -125,35 +107,28 @@ they are small and available for direct download.
 
 ## Known issues
 
-1. **Content interface not relaying** (see "What does NOT work" above)
-
-2. **Multiple component revisions accumulating**: Each sideload creates a new
+1. **Multiple component revisions accumulating**: Each sideload creates a new
    revision under `/snap/ovms-engine/components/mnt/model-faster-rcnn/x<N>`.
    Old revisions should be cleaned up periodically.
 
+2. **OVMS warns about `meta` directory**: The snap component metadata directory
+   sits alongside the model version directory. OVMS logs a warning but functions
+   correctly. Harmless.
+
 ## Next steps
 
-### Immediate (fix content interface for model switching)
+### Immediate (verify model hot-swap for demo)
 
-1. **Fix the content interface**: Investigate why writes to the Greengrass plug
-   side don't appear at the ovms-engine slot side. Possible causes:
-   - The slot `write` path in snapcraft.yaml (`$SNAP_COMMON/config`) may not
-     resolve to what we expect after snap reinstall
-   - The plug target (`$SNAP_DATA/ovms-engine-config`) may be mounting to a
-     different location than ModelManagerCore writes to
-   - Alternatively: have ModelManagerCore write directly to the OVMS config
-     path if the content interface proves unreliable
+1. **Test model switching**: Install faster-rcnn, switch to efficientnet via
+   shadow, verify OVMS unloads one and loads the other without restart.
 
 ### Short-term (production models)
 
 2. **Replace placeholder models**: Build `.comp` files with real production
    models. The current models are Intel's demo retail models.
 
-3. **Verify model hot-swap**: Install faster-rcnn, switch to efficientnet via
-   shadow, verify OVMS unloads one and loads the other without restart.
-
 ### Medium-term (store publishing)
 
-4. **Publish ovms-engine to Snap Store**: Once published, the `"source": "snap"`
+3. **Publish ovms-engine to Snap Store**: Once published, the `"source": "snap"`
    path works without S3 fallback — snapd pulls components directly from the
    store.
