@@ -276,6 +276,13 @@ class InferenceHandler:
         else:
             return self._postprocess_classification(result_dict, inference_time_ms)
 
+    # Known labels for demo models. In production, these would come from labels
+    # files bundled with the model component.
+    DETECTION_LABELS = {0: "background", 1: "person"}
+
+    def _get_label(self, class_id):
+        return self.DETECTION_LABELS.get(class_id, f"class_{class_id}")
+
     @staticmethod
     def _normalize_result(result):
         if isinstance(result, dict):
@@ -316,8 +323,9 @@ class InferenceHandler:
             ymin = float(np.clip(det[4], 0, 1))
             xmax = float(np.clip(det[5], 0, 1))
             ymax = float(np.clip(det[6], 0, 1))
+            label = self._get_label(label_id)
             detections.append({
-                "label": f"class_{label_id}",
+                "label": label,
                 "score": round(confidence, 4),
                 "box": {
                     "xmin": round(xmin, 4),
