@@ -36,6 +36,7 @@ class InferenceHandler:
         self.ipc_client = clientv2.GreengrassCoreIPCClientV2()
         self.model_metadata = None
         self.active_model_id = None
+        self.cap = None
 
         logger.info(
             "InferenceHandler initialized: thing=%s camera=%s ovms=%s interval=%ss",
@@ -81,7 +82,7 @@ class InferenceHandler:
             if "active_model" in state:
                 new_model = state["active_model"]
                 logger.info("Shadow delta: active_model changed to '%s'", new_model)
-                self._load_active_model()
+                self._switch_to_model(new_model)
             if "confidence_threshold" in state:
                 self.confidence_threshold = float(state["confidence_threshold"])
                 logger.info("Confidence threshold updated to %s", self.confidence_threshold)
@@ -90,6 +91,34 @@ class InferenceHandler:
                 logger.info("Inference interval updated to %ss", self.inference_interval)
         except Exception as e:
             logger.error("Failed to handle shadow delta: %s", e)
+
+    def _switch_to_model(self, model_id):
+        if not self.thing_name or not model_id:
+            return
+        if model_id == self.active_model_id:
+            return
+        try:
+            response = self.ipc_client.get_thing_shadow(
+                thing_name=self.thing_name, shadow_name=SHADOW_NAME
+            )
+            shadow = json.loads(response.payload)
+            reported = shadow.get("state", {}).get("reported", {})
+            models = reported.get("models", {})
+            if model_id not in models:
+                logger.warning("Model '%s' not in reported models", model_id)
+                return
+            entry = models[model_id]
+            if entry.get("status") != "ready":
+                logger.warning("Model '%s' not ready (status=%s)", model_id, entry.get("status"))
+                return
+            metadata = entry.get("model_metadata", {})
+            logger.info("Active model changed: %s -> %s", self.active_model_id, model_id)
+            self.active_model_id = model_id
+            self.model_metadata = metadata
+            logger.info("Model metadata: %s", json.dumps(metadata, indent=2))
+            self._report_active_model()
+        except Exception as e:
+            logger.error("Failed to switch to model '%s': %s", model_id, e)
 
     def _load_active_model(self):
         if not self.thing_name:
@@ -164,15 +193,18 @@ class InferenceHandler:
             logger.warning("Failed to report active_model: %s", e)
 
     def _capture_and_infer(self):
-        cap = cv2.VideoCapture(self.camera_device)
-        if not cap.isOpened():
-            logger.error("Cannot open camera: %s", self.camera_device)
-            return
+        if self.cap is None or not self.cap.isOpened():
+            self.cap = cv2.VideoCapture(self.camera_device)
+            if not self.cap.isOpened():
+                logger.error("Cannot open camera: %s", self.camera_device)
+                self.cap = None
+                return
 
-        ret, frame = cap.read()
-        cap.release()
+        ret, frame = self.cap.read()
         if not ret:
-            logger.warning("Failed to capture frame")
+            logger.warning("Failed to capture frame, reopening camera")
+            self.cap.release()
+            self.cap = None
             return
 
         frame_height, frame_width = frame.shape[:2]
