@@ -218,25 +218,34 @@ class InferenceHandler:
         return np.expand_dims(np.transpose(rgb, (2, 0, 1)), axis=0).astype(np.float32)
 
     def _postprocess(self, result, output_names, frame_width, frame_height, inference_time_ms):
-        if "detection_out" in output_names or self._is_detection_output(result):
-            return self._postprocess_detection(result, frame_width, frame_height, inference_time_ms)
+        result_dict = self._normalize_result(result)
+        if "detection_out" in output_names or self._is_detection_output(result_dict):
+            return self._postprocess_detection(result_dict, frame_width, frame_height, inference_time_ms)
         else:
-            return self._postprocess_classification(result, inference_time_ms)
+            return self._postprocess_classification(result_dict, inference_time_ms)
 
-    def _is_detection_output(self, result):
-        for key, val in result.items():
+    @staticmethod
+    def _normalize_result(result):
+        if isinstance(result, dict):
+            return result
+        if isinstance(result, np.ndarray):
+            return {"output": result}
+        return {"output": np.array(result)}
+
+    def _is_detection_output(self, result_dict):
+        for key, val in result_dict.items():
             if hasattr(val, 'shape') and len(val.shape) == 4 and val.shape[2] > 1 and val.shape[3] == 7:
                 return True
         return False
 
-    def _postprocess_detection(self, result, frame_width, frame_height, inference_time_ms):
+    def _postprocess_detection(self, result_dict, frame_width, frame_height, inference_time_ms):
         output = None
-        for key, val in result.items():
+        for key, val in result_dict.items():
             if hasattr(val, 'shape') and len(val.shape) == 4 and val.shape[3] == 7:
                 output = val
                 break
         if output is None:
-            for key, val in result.items():
+            for key, val in result_dict.items():
                 output = val
                 break
         if output is None:
@@ -278,9 +287,9 @@ class InferenceHandler:
             "confidence_threshold": self.confidence_threshold,
         }
 
-    def _postprocess_classification(self, result, inference_time_ms):
+    def _postprocess_classification(self, result_dict, inference_time_ms):
         output = None
-        for key, val in result.items():
+        for key, val in result_dict.items():
             squeezed = np.squeeze(val)
             if squeezed.ndim >= 1 and squeezed.size > 1:
                 if output is None or squeezed.size > output.size:
