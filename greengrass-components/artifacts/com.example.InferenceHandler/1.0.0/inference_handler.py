@@ -128,25 +128,31 @@ class InferenceHandler:
         """Report active_model and clear desired.active_model in one write.
 
         Setting reported = desired eliminates the delta. Setting desired to
-        null signals the request has been processed.
+        null signals the request has been processed. Retries on failure since
+        ShadowManager may not be ready immediately after startup.
         """
         if not self.thing_name or not self.active_model_id:
             return
-        try:
-            payload = json.dumps({
-                "state": {
-                    "reported": {"active_model": self.active_model_id},
-                    "desired": {"active_model": None},
-                }
-            }).encode("utf-8")
-            self.ipc_client.update_thing_shadow(
-                thing_name=self.thing_name,
-                shadow_name=SHADOW_NAME,
-                payload=payload,
-            )
-            logger.info("Reported active_model=%s and cleared desired", self.active_model_id)
-        except Exception as e:
-            logger.warning("Failed to report active_model: %s", e)
+        payload = json.dumps({
+            "state": {
+                "reported": {"active_model": self.active_model_id},
+                "desired": {"active_model": None},
+            }
+        }).encode("utf-8")
+        for attempt in range(3):
+            try:
+                self.ipc_client.update_thing_shadow(
+                    thing_name=self.thing_name,
+                    shadow_name=SHADOW_NAME,
+                    payload=payload,
+                )
+                logger.info("Reported active_model=%s and cleared desired", self.active_model_id)
+                return
+            except Exception as e:
+                if attempt < 2:
+                    time.sleep(2)
+                else:
+                    logger.warning("Failed to report active_model after 3 attempts: %s", e)
 
     def _load_active_model(self):
         """Determine which model to use on startup or when polling.
