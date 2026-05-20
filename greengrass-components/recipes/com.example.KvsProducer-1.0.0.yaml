@@ -21,7 +21,7 @@ ComponentConfiguration:
   DefaultConfiguration:
     KvsStreamName: "ge-demo-stream"
     Region: "eu-west-1"
-    CameraDevice: "/dev/video1"
+    CameraDevice: "/dev/video0"
     # Path where the kvs-gstreamer snap content interface is mounted.
     #
     # Ubuntu Core snap confinement prevents apt-get and cmake inside Greengrass
