@@ -125,18 +125,21 @@ class InferenceHandler:
             logger.error("Failed to switch to model '%s': %s", model_id, e)
 
     def _report_and_clear_desired(self):
-        """Report active_model and clear desired.active_model in one write.
+        """Report active_model to shadow reported state.
 
-        Setting reported = desired eliminates the delta. Setting desired to
-        null signals the request has been processed. Retries on failure since
-        ShadowManager may not be ready immediately after startup.
+        Only updates reported.active_model. Does NOT clear desired — that
+        creates version conflicts when the React app writes desired via the
+        cloud API concurrently. Once reported matches desired, the delta
+        resolves naturally without explicit clearing.
+
+        Retries on failure since ShadowManager may not be ready immediately
+        after startup.
         """
         if not self.thing_name or not self.active_model_id:
             return
         payload = json.dumps({
             "state": {
                 "reported": {"active_model": self.active_model_id},
-                "desired": {"active_model": None},
             }
         }).encode("utf-8")
         for attempt in range(3):
@@ -146,7 +149,7 @@ class InferenceHandler:
                     shadow_name=SHADOW_NAME,
                     payload=payload,
                 )
-                logger.info("Reported active_model=%s and cleared desired", self.active_model_id)
+                logger.info("Reported active_model=%s", self.active_model_id)
                 return
             except Exception as e:
                 if attempt < 2:
