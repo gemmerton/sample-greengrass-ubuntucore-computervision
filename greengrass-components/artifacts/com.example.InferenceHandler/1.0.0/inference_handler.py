@@ -36,7 +36,6 @@ class InferenceHandler:
         self.ipc_client = clientv2.GreengrassCoreIPCClientV2()
         self.model_metadata = None
         self.active_model_id = None
-        self.cap = None
 
         logger.info(
             "InferenceHandler initialized: thing=%s camera=%s ovms=%s interval=%ss",
@@ -192,39 +191,30 @@ class InferenceHandler:
         except Exception as e:
             logger.warning("Failed to report active_model: %s", e)
 
-    def _open_camera(self):
-        if self.camera_device not in ("auto", ""):
-            cap = cv2.VideoCapture(self.camera_device)
-            if cap.isOpened():
-                return cap
-            logger.warning("Cannot open configured camera %s, trying auto-detect", self.camera_device)
-
-        # Scan even-indexed devices first (index0 is typically used by KvsProducer,
-        # index2 is the second capture-capable node on multi-stream USB cameras)
-        for i in [2, 4, 6, 0, 1, 3, 5, 7]:
-            dev = f"/dev/video{i}"
-            cap = cv2.VideoCapture(dev)
-            if cap.isOpened():
-                ret, _ = cap.read()
-                if ret:
-                    logger.info("Auto-detected capture device: %s", dev)
-                    self.camera_device = dev
-                    return cap
-                cap.release()
-        return None
+    def _get_frame(self):
+        snapshot_dir = os.environ.get(
+            "SNAPSHOT_DIR",
+            "/var/snap/aws-iot-greengrass/common/greengrass/v2/work/com.example.KvsProducer/snapshots"
+        )
+        if not os.path.isdir(snapshot_dir):
+            return None
+        try:
+            import glob as _glob
+            snapshots = sorted(_glob.glob(os.path.join(snapshot_dir, "snapshot_*.jpg")))
+            if not snapshots:
+                return None
+            latest = snapshots[-1]
+            mtime = os.path.getmtime(latest)
+            if time.time() - mtime > 10:
+                return None
+            frame = cv2.imread(latest)
+            return frame
+        except Exception:
+            return None
 
     def _capture_and_infer(self):
-        if self.cap is None or not self.cap.isOpened():
-            self.cap = self._open_camera()
-            if self.cap is None:
-                logger.error("No camera available")
-                return
-
-        ret, frame = self.cap.read()
-        if not ret:
-            logger.warning("Failed to capture frame, reopening camera")
-            self.cap.release()
-            self.cap = None
+        frame = self._get_frame()
+        if frame is None:
             return
 
         frame_height, frame_width = frame.shape[:2]
