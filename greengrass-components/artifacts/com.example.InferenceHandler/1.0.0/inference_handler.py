@@ -46,6 +46,7 @@ class InferenceHandler:
         self._subscribe_to_shadow_delta()
         self._load_active_model()
 
+        cycle_count = 0
         while True:
             if self.model_metadata is None:
                 logger.info("No active model, waiting...")
@@ -58,6 +59,10 @@ class InferenceHandler:
             except Exception as e:
                 logger.error("Inference cycle failed: %s", e)
                 traceback.print_exc()
+
+            cycle_count += 1
+            if cycle_count % 10 == 0:
+                self._report_active_model()
 
             time.sleep(self.inference_interval)
 
