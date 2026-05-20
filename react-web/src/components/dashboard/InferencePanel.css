@@ -1,0 +1,126 @@
+.inference-panel {
+  padding: 1rem;
+  font-family: monospace;
+  font-size: 0.85rem;
+  overflow-y: auto;
+  max-height: 400px;
+}
+
+.inference-panel__header {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.inference-panel__model {
+  font-weight: bold;
+  color: #00ff88;
+}
+
+.inference-panel__timing {
+  color: #aaa;
+}
+
+.inference-panel__type {
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.1);
+  text-transform: uppercase;
+  font-size: 0.7rem;
+}
+
+.inference-panel__empty {
+  color: #888;
+  text-align: center;
+  padding: 2rem;
+}
+
+.inference-panel__no-results {
+  color: #666;
+  padding: 0.5rem 0;
+}
+
+.inference-panel__table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.inference-panel__table th,
+.inference-panel__table td {
+  text-align: left;
+  padding: 4px 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.inference-panel__table th {
+  color: #888;
+  font-weight: normal;
+}
+
+.inference-panel__coords {
+  font-size: 0.75rem;
+  color: #888;
+}
+
+.inference-panel__class-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.inference-panel__class-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.inference-panel__class-label {
+  min-width: 80px;
+}
+
+.inference-panel__class-bar {
+  flex: 1;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.inference-panel__class-bar-fill {
+  height: 100%;
+  background: #00ff88;
+  border-radius: 3px;
+}
+
+.inference-panel__class-score {
+  min-width: 50px;
+  text-align: right;
+  color: #aaa;
+}
+
+.inference-panel__history {
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.inference-panel__history-label {
+  color: #888;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+}
+
+.inference-panel__history-list {
+  margin-top: 0.5rem;
+}
+
+.inference-panel__history-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 2px 0;
+  color: #666;
+  font-size: 0.75rem;
+}
