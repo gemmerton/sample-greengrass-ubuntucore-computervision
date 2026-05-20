@@ -93,6 +93,17 @@ docker run --rm --entrypoint tar "${OVMS_IMAGE}" \
     | tar x --strip-components=2 -C ./lib/
 echo "  python3.10/ ($(du -sh ./lib/python3.10 | cut -f1))"
 
+# Extract OVMS Python dependencies (jinja2, markupsafe, openvino bindings)
+echo "Extracting OVMS Python deps..."
+docker run --rm --entrypoint tar "${OVMS_IMAGE}" \
+    ch --dereference -C /ovms python_deps \
+    | tar x -C ./lib/
+docker run --rm --entrypoint tar "${OVMS_IMAGE}" \
+    ch --dereference -C /ovms/lib python \
+    | tar x -C ./lib/
+echo "  python_deps/ ($(du -sh ./lib/python_deps | cut -f1))"
+echo "  python/ ($(du -sh ./lib/python | cut -f1))"
+
 echo ""
 echo "=== Extraction complete ==="
 echo "Binary: ./ovms ($(du -h ./ovms | cut -f1))"

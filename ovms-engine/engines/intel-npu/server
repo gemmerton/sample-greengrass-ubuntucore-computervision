@@ -8,8 +8,8 @@ http_port="$(modelctl get http.port 2>/dev/null || echo 9001)"
 poll_seconds="$(modelctl get config.poll_seconds 2>/dev/null || echo 5)"
 
 export LD_LIBRARY_PATH="$SNAP_COMPONENTS/ovms-npu/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-export PYTHONHOME="$SNAP_COMPONENTS/ovms-npu/usr/lib"
-export PYTHONPATH="$SNAP_COMPONENTS/ovms-npu/usr/lib/python3.10"
+export PYTHONHOME="$SNAP_COMPONENTS/ovms-npu/usr"
+export PYTHONPATH="$SNAP_COMPONENTS/ovms-npu/usr/lib/python3.10:$SNAP_COMPONENTS/ovms-npu/usr/lib/python_deps:$SNAP_COMPONENTS/ovms-npu/usr/lib/python"
 
 exec "$SNAP_COMPONENTS/ovms-npu/usr/bin/ovms" \
     --config_path "$SNAP_COMMON/config/models_config.json" \
