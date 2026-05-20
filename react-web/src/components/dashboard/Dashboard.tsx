@@ -4,6 +4,9 @@
  */
 
 import React, { useCallback, useState } from 'react';
+import { InferenceOverlay } from './InferenceOverlay';
+import { InferencePanel } from './InferencePanel';
+import { useInferenceResults } from '../../hooks/useInferenceResults';
 import { Header } from './Header';
 // import { ImageGallery } from './ImageGallery';  // S3 features temporarily hidden
 import { MessageFeed } from './MessageFeed';
@@ -37,6 +40,8 @@ const DashboardContent: React.FC<DashboardProps> = ({
   const [thingName, setThingName] = useState<string>('');
   const [settingsOpen, setSettingsOpen] = useState<boolean>(false);
   const [messagePanelOpen, setMessagePanelOpen] = useState<boolean>(false);
+  const [videoElement, setVideoElement] = useState<HTMLVideoElement | null>(null);
+  const { latestResult, history } = useInferenceResults();
 
   /**
    * Handle MQTT topic change
@@ -136,13 +141,16 @@ const DashboardContent: React.FC<DashboardProps> = ({
           {/* KVS Live Stream - primary content */}
           {credentials && (
             <section className="dashboard__content" aria-label="Live video stream">
-              <article className="dashboard__card dashboard__card--video" aria-labelledby="video-stream-title">
+              <article className="dashboard__card dashboard__card--video" aria-labelledby="video-stream-title" style={{ position: 'relative' }}>
                 <KvsPlayer
                   streamName={(import.meta as any).env?.VITE_KVS_STREAM_NAME ?? ''}
                   region={region ?? config.aws.region}
                   credentials={credentials as unknown as AwsCredentialIdentity}
+                  onVideoReady={setVideoElement}
                 />
+                <InferenceOverlay result={latestResult} videoElement={videoElement} />
               </article>
+              <InferencePanel latestResult={latestResult} history={history} />
             </section>
           )}
 
@@ -205,7 +213,7 @@ const DashboardContent: React.FC<DashboardProps> = ({
 export const Dashboard: React.FC<DashboardProps> = ({ children, className }) => {
   return (
     <S3Provider autoRefreshInterval={30000} maxImages={20}>
-      <MqttProvider autoConnect={false}>
+      <MqttProvider autoConnect={false} defaultTopic="camera/inference">
         <DashboardContent children={children} className={className} />
       </MqttProvider>
     </S3Provider>

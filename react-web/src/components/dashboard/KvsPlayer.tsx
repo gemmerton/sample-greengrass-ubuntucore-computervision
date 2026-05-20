@@ -8,6 +8,7 @@ interface KvsPlayerProps {
   streamName: string;
   region: string;
   credentials: AwsCredentialIdentity;
+  onVideoReady?: (videoEl: HTMLVideoElement) => void;
 }
 
 const MAX_RETRIES = 3;
@@ -16,7 +17,7 @@ const RETRY_INTERVAL_MS = import.meta.env.VITEST ? 0 : 5000;
 const URL_REFRESH_BEFORE_EXPIRY_MS = 5 * 60 * 1000;
 
 export const KvsPlayer: React.FC<KvsPlayerProps> = ({
-  streamName, region, credentials,
+  streamName, region, credentials, onVideoReady,
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
@@ -55,6 +56,7 @@ export const KvsPlayer: React.FC<KvsPlayerProps> = ({
           videoRef.current?.play().catch(() => {});
           setLoading(false);
           setPlaying(true);
+          if (videoRef.current) { onVideoReady?.(videoRef.current); }
         });
         hls.on(Hls.Events.ERROR, (_: unknown, data: { fatal: boolean }) => {
           if (data.fatal) { loadStreamRef.current?.(); }
