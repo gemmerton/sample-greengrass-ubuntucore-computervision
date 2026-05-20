@@ -1,25 +1,53 @@
 # Model Management - Status & Next Steps
 
-## Status: Shadow-driven model provisioning working end-to-end (2026-05-19)
+## Status: OVMS serving inference, content interface broken (2026-05-20)
 
-The `ModelManagerCore` Greengrass component now successfully orchestrates model
-installation on a sideloaded `ovms-engine` snap via the IoT Device Shadow.
+The full model management pipeline is working from cloud shadow through to OVMS
+serving inference — with one critical gap: the snap content interface between
+Greengrass and ovms-engine is not relaying config files, so OVMS doesn't pick
+up model changes written by ModelManagerCore.
 
 ### What works
 
-1. **Shadow-driven flow**: Setting `desired.models.faster-rcnn.source = "snap"` in
-   the `model-config` named shadow triggers the full install pipeline
-2. **Sideloaded snap detection**: Automatically detects `ovms-engine` is not from
-   the Snap Store and falls back to S3-based component download
-3. **S3 .comp download**: Downloads `ovms-engine+model-faster-rcnn.comp` from
-   `s3://gg-ge-test/components/`
-4. **snapd sideload**: Installs the component via multipart POST to the snapd API
-5. **S3 manifest fallback**: Reads `manifest.json` from S3 when snap confinement
-   prevents direct file access to the component path
-6. **OVMS config generation**: Writes `models_config.json` via the content
-   interface to `/var/snap/ovms-engine/common/config/`
-7. **Model weights on device**: Verified `.xml` and `.bin` OpenVINO IR files at
-   `/snap/ovms-engine/components/x1/model-faster-rcnn/1/`
+1. **Shadow sync to cloud**: Reported state from the device appears in the AWS
+   IoT Console immediately (IoT policy fixed 2026-05-20)
+2. **Shadow-driven model install**: Setting `desired.models.faster-rcnn.source = "snap"`
+   triggers download from S3, sideload via snapd, manifest download, and
+   shadow reported state update — all automated
+3. **OVMS server running**: OpenVINO Model Server starts, loads models from
+   `models_config.json`, and serves gRPC (9000) + REST (9001)
+4. **Model loaded and available**: `faster_rcnn` model loaded with status
+   `AVAILABLE` and serving inference requests
+5. **S3 .comp download + sideload**: ModelManagerCore downloads `.comp` from
+   `s3://gg-ge-test/components/` and sideloads via snapd REST API
+6. **S3 manifest fallback**: Reads model metadata from S3 when snap confinement
+   prevents direct file access to the sideloaded component path
+
+### What does NOT work
+
+1. **Content interface not relaying config to OVMS** (BLOCKING):
+   ModelManagerCore writes `models_config.json` to
+   `/var/snap/aws-iot-greengrass/current/ovms-engine-config/` (the Greengrass
+   side of the `inference-config` content interface). This should appear at
+   `/var/snap/ovms-engine/common/config/` (where OVMS reads). It does not.
+   Writes to the Greengrass side are invisible to OVMS. Disconnecting and
+   reconnecting the interface doesn't fix it.
+
+   **Impact**: Model switching doesn't work. When ModelManagerCore installs a
+   new model and regenerates the OVMS config, OVMS never sees the update. The
+   demo requires hot-swapping models via the shadow, so this must be fixed.
+
+   **Workaround applied today**: Wrote the config directly to
+   `/var/snap/ovms-engine/common/config/models_config.json` — this proved
+   inference works but is not a viable solution for the demo.
+
+2. **Model base_path uses stale snap revision**: The ModelManagerCore config
+   `SnapComponentsPath` is set to `/snap/ovms-engine/components/x1` but the
+   snap is now at a higher revision. Sideloaded model components go to
+   `/snap/ovms-engine/components/mnt/model-<id>/x<N>`. The `_find_component_path`
+   logic handles this via fallback search, but the `base_path` written to the
+   OVMS config may not match what OVMS can access from within its snap
+   confinement.
 
 ### S3 bucket layout
 
@@ -30,9 +58,9 @@ s3://gg-ge-test/components/
 │   └── model-efficientnet.json
 ├── ovms-engine+model-faster-rcnn.comp    (1.3 MB, person-detection-retail-0013 FP16)
 ├── ovms-engine+model-efficientnet.comp   (3.2 MB, age-gender-recognition-retail-0013 FP16)
-├── ovms-engine+ovms-cpu.comp             (85 MB)
-├── ovms-engine+ovms-gpu.comp             (85 MB)
-└── ovms-engine+ovms-npu.comp             (85 MB)
+├── ovms-engine+ovms-cpu.comp             (83 MB, with full deps + Python stdlib)
+├── ovms-engine+ovms-gpu.comp             (83 MB)
+└── ovms-engine+ovms-npu.comp             (83 MB)
 ```
 
 ### Shadow document structure
@@ -51,11 +79,12 @@ s3://gg-ge-test/components/
           "status": "ready",
           "model_metadata": {
             "model_name": "faster_rcnn",
+            "version": "1.0.0",
             "input_name": "data",
             "output_names": ["detection_out"],
             "input_shape": [1, 3, 320, 544],
             "labels_file": "labels.txt",
-            "local_path": "/snap/ovms-engine/components/x1/model-faster-rcnn"
+            "local_path": "/snap/ovms-engine/components/mnt/model-faster-rcnn/x1"
           }
         }
       }
@@ -72,66 +101,59 @@ s3://gg-ge-test/components/
 | efficientnet | age-gender-recognition-retail-0013 | Age/gender classification | [1,3,62,62] NCHW | 4.3 MB |
 
 These are Intel-optimised FP16 models from the OpenVINO Model Zoo, chosen because
-they are small and available for direct download. They prove the pipeline works but
-should be replaced with production models.
+they are small and available for direct download.
+
+## Resolved issues (2026-05-20)
+
+1. ~~**Shadow reported state not syncing to cloud**~~: IoT policy was missing
+   shadow actions. Fixed in live policy and `iot-greengrass-setup.py`.
+
+2. ~~**OVMS missing shared libraries**~~: The extraction script now uses
+   `tar --dereference` to resolve symlinks and includes 13 system libraries
+   not present in core24, plus the Python 3.10 stdlib and OVMS Python deps.
+   See `ovms-engine/extract-ovms-libs.sh`.
+
+3. ~~**OVMS server startup failures**~~: Fixed by:
+   - Removing `--target_device` CLI flag (conflicts with `--config_path`)
+   - Bypassing `modelctl run` wrapper (required `OPENAI_BASE_PATH` env)
+   - Setting `LD_LIBRARY_PATH` in engine server scripts
+   - Setting `PYTHONHOME`/`PYTHONPATH` for the embedded Python interpreter
+   - Including OVMS Python deps (`/ovms/python_deps/` and `/ovms/lib/python/`)
+
+4. ~~**modelctl config.poll_seconds not supported**~~: Server scripts now use
+   defaults with `|| echo <value>` fallback when `modelctl get` fails.
 
 ## Known issues
 
-1. ~~**Shadow reported state not syncing to cloud**~~: **RESOLVED 2026-05-20**.
-   Root cause: the Greengrass core device IoT policy was missing
-   `iot:GetThingShadow`, `iot:UpdateThingShadow`, `iot:DeleteThingShadow` actions.
-   The ShadowManager sync config was already correct. Fix: updated the IoT policy
-   (live) and the provisioning script (`iot-greengrass-setup.py`).
+1. **Content interface not relaying** (see "What does NOT work" above)
 
-2. **OVMS service won't start - missing shared libraries**: The `ovms-cpu` component
-   is now installed and `modelctl use-engine intel-cpu` succeeds, but the OVMS binary
-   fails with: `libpython3.10.so.1.0: cannot open shared object file`. The `.comp`
-   file doesn't include all required shared libraries. The snap's `server.sh` calls
-   `modelctl run` which calls the OVMS binary at `$SNAP_COMPONENTS/ovms-cpu/usr/bin/ovms`.
-   Fix: rebuild the `ovms-cpu` component with all runtime dependencies staged (or
-   add the missing libs to the snap base).
-
-3. **Multiple component revisions accumulating**: Each sideload creates a new
+2. **Multiple component revisions accumulating**: Each sideload creates a new
    revision under `/snap/ovms-engine/components/mnt/model-faster-rcnn/x<N>`.
    Old revisions should be cleaned up periodically.
 
 ## Next steps
 
-### Immediate (get OVMS serving inference)
+### Immediate (fix content interface for model switching)
 
-1. **Fix ovms-cpu shared libraries**: The OVMS binary needs `libpython3.10.so.1.0`
-   (and likely other libs). Options:
-   - Rebuild the ovms-cpu component to stage all required shared libraries
-     (extract from the OVMS Docker image: `docker cp ovms-tmp:/ovms/lib/ ./lib/`)
-   - Add `stage-packages: [libpython3.10]` in the snapcraft.yaml ovms part
-   - Or use the OVMS binary from a compatible Docker image that has static linking
-   
-   The ovms-cpu component is already installed on device (`snap install --dangerous`
-   succeeded) and `modelctl use-engine intel-cpu` works. The `modelctl` config
-   values (`grpc.port`, `http.port`, `config.poll_seconds`) are not persisting -
-   they need to be set before the server script can run. Run the install hook
-   manually or write the config file directly.
-
-2. ~~**Fix shadow sync**~~: **RESOLVED 2026-05-20** (see Known Issues #1 above).
-
-3. **Verify inference**: Once OVMS is running, test with:
-   ```bash
-   curl -X POST http://localhost:9001/v1/models/faster_rcnn:predict -d @test.json
-   ```
+1. **Fix the content interface**: Investigate why writes to the Greengrass plug
+   side don't appear at the ovms-engine slot side. Possible causes:
+   - The slot `write` path in snapcraft.yaml (`$SNAP_COMMON/config`) may not
+     resolve to what we expect after snap reinstall
+   - The plug target (`$SNAP_DATA/ovms-engine-config`) may be mounting to a
+     different location than ModelManagerCore writes to
+   - Alternatively: have ModelManagerCore write directly to the OVMS config
+     path if the content interface proves unreliable
 
 ### Short-term (production models)
 
-4. **Replace placeholder models**: Build `.comp` files with real production models
-   (e.g., from Kaggle or custom-trained). The current models are Intel's demo
-   retail models that prove the pipeline but aren't suitable for the actual
-   computer vision use case.
+2. **Replace placeholder models**: Build `.comp` files with real production
+   models. The current models are Intel's demo retail models.
 
-5. **Build proper .comp files**: Use `snapcraft pack --component` on a Linux
-   build machine rather than manually creating squashfs archives. This ensures
-   proper snap metadata.
+3. **Verify model hot-swap**: Install faster-rcnn, switch to efficientnet via
+   shadow, verify OVMS unloads one and loads the other without restart.
 
 ### Medium-term (store publishing)
 
-6. **Publish ovms-engine to Snap Store**: Once published, the `"source": "snap"`
-   path works without S3 fallback - snapd pulls components directly from the store.
-   The S3 fallback remains for custom/private models not in the store.
+4. **Publish ovms-engine to Snap Store**: Once published, the `"source": "snap"`
+   path works without S3 fallback — snapd pulls components directly from the
+   store.
