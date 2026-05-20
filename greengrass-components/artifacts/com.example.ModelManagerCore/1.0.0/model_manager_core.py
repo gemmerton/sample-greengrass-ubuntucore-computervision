@@ -135,9 +135,9 @@ class ModelManagerCore:
             # The delta contains the desired state fields that differ from reported
             state = delta.get("state", {})
 
-            # Handle active_model switching (Requirements 5.1, 5.6, 5.7)
-            if "active_model" in state:
-                self._handle_active_model(state["active_model"])
+            # active_model is handled by InferenceHandler, not here
+            if "active_model" in state and "models" not in state:
+                logger.debug("Delta only contains active_model (handled by InferenceHandler), ignoring")
                 return
 
             desired_models = state.get("models", {})
