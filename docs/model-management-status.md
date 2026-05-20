@@ -1,35 +1,73 @@
 # Model Management - Status & Next Steps
 
-## Status: Full pipeline working end-to-end (2026-05-20)
+## Status: Full demo pipeline working end-to-end (2026-05-20)
 
-The full model management pipeline is operational: shadow desired state triggers
-model download from S3, sideload via snapd, OVMS config written via content
-interface, and OVMS loads the model for inference on gRPC/REST.
+The complete inference pipeline is operational: shadow-driven model management,
+live OVMS inference, real-time MQTT results, and React dashboard with bounding
+box overlays and model switching.
 
 ### What works
 
-1. **Shadow sync to cloud**: Reported state from the device appears in the AWS
-   IoT Console immediately (IoT policy fixed 2026-05-20)
-2. **Shadow-driven model install**: Setting `desired.models.faster-rcnn.source = "snap"`
-   triggers download from S3, sideload via snapd, manifest download, and
-   shadow reported state update — all automated
-3. **OVMS server running**: OpenVINO Model Server starts, loads models from
-   `models_config.json`, and serves gRPC (9000) + REST (9001)
-4. **Model loaded and available**: `faster_rcnn` model loaded with status
-   `AVAILABLE` and serving inference requests
-5. **S3 .comp download + sideload**: ModelManagerCore downloads `.comp` from
-   `s3://gg-ge-test/components/` and sideloads via snapd REST API
-6. **S3 manifest fallback**: Reads model metadata from S3 when snap confinement
-   prevents direct file access to the sideloaded component path
+1. **Shadow-driven model install**: Push `desired.models.<id>.source = "snap"` →
+   ModelManagerCore downloads .comp from S3, sideloads via snapd, writes OVMS
+   config via content interface, reports ready
+2. **OVMS serving inference**: OpenVINO Model Server runs as snap daemon,
+   hot-loads/unloads models from config file polling
+3. **Unified InferenceHandler**: Reads frames from KvsProducer snapshots, calls
+   OVMS gRPC, publishes results to `camera/inference` via IoT Core MQTT
+4. **Dynamic model switching**: React app sets `desired.active_model` →
+   InferenceHandler receives delta, switches model, reports back. ~2-3 second
+   switch time.
+5. **Shadow sync**: Reported state (models + active_model) syncs to cloud,
+   visible in AWS Console and React dashboard
+6. **KVS video streaming**: Live camera feed via Kinesis Video Streams HLS
+7. **React dashboard**: Live video + bounding box overlay + inference results
+   panel + model selector + settings drawer
 
-### Notes on content interface
+### Architecture
 
-The snap content interface between Greengrass and ovms-engine works correctly.
-Writes from **inside** the Greengrass snap namespace (where ModelManagerCore
-runs) go through the bind mount to `/var/snap/ovms-engine/common/config/`.
-Writes from **outside** the snap namespace (e.g., direct `tee` from SSH) go to
-the local directory and bypass the mount — this caused confusion during
-debugging but does not affect production operation.
+```
+Camera (/dev/video0)
+  │
+  ├──► KvsProducer (GStreamer → KVS @ 15fps)
+  │     └── writes snapshot JPEGs to shared directory
+  │
+  └──► InferenceHandler (reads snapshots @ 1fps)
+         ├── reads active model from model-config shadow
+         ├── calls OVMS gRPC (localhost:9000)
+         ├── post-processes (detection boxes or classification probs)
+         ├── publishes to camera/inference via IoT Core MQTT
+         └── reports active_model to shadow
+              │
+              └──► React dashboard
+                    ├── KVS HLS video player
+                    ├── Canvas overlay (bounding boxes / classification badge)
+                    ├── Inference results panel
+                    └── Model selector (updates shadow desired.active_model)
+```
+
+### Model switch flow
+
+1. React UI sets `desired.active_model = "<model-id>"`
+2. Shadow delta propagates to device via ShadowManager
+3. InferenceHandler receives delta → reads model metadata from reported state
+4. Switches OVMS model name, updates pre/post-processing
+5. Reports `reported.active_model = "<model-id>"` to shadow
+6. React UI polls shadow, sees reported matches desired → confirms switch
+
+### Startup priority for active model
+
+On restart/deployment, InferenceHandler uses this priority chain:
+1. `desired.active_model` — user explicitly requested (pending switch)
+2. `reported.active_model` — persisted from previous run (survives restarts)
+3. First ready model — cold start fallback
+
+### Camera sharing
+
+The Logitech BRIO USB camera does not support concurrent V4L2 access.
+KvsProducer owns the camera exclusively and writes snapshot JPEGs.
+InferenceHandler reads from the snapshot directory (no camera access needed).
+Camera device: `/dev/video0` (KvsProducer), snapshots read by InferenceHandler.
 
 ### S3 bucket layout
 
@@ -38,97 +76,50 @@ s3://gg-ge-test/components/
 ├── manifests/
 │   ├── model-faster-rcnn.json
 │   └── model-efficientnet.json
-├── ovms-engine+model-faster-rcnn.comp    (1.3 MB, person-detection-retail-0013 FP16)
-├── ovms-engine+model-efficientnet.comp   (3.2 MB, age-gender-recognition-retail-0013 FP16)
-├── ovms-engine+ovms-cpu.comp             (83 MB, with full deps + Python stdlib)
+├── ovms-engine+model-faster-rcnn.comp    (1.3 MB)
+├── ovms-engine+model-efficientnet.comp   (3.2 MB)
+├── ovms-engine+ovms-cpu.comp             (83 MB)
 ├── ovms-engine+ovms-gpu.comp             (83 MB)
 └── ovms-engine+ovms-npu.comp             (83 MB)
 ```
 
-### Shadow document structure
+### Current models
 
-```json
-{
-  "state": {
-    "desired": {
-      "models": {
-        "faster-rcnn": { "source": "snap" }
-      }
-    },
-    "reported": {
-      "models": {
-        "faster-rcnn": {
-          "status": "ready",
-          "model_metadata": {
-            "model_name": "faster_rcnn",
-            "version": "1.0.0",
-            "input_name": "data",
-            "output_names": ["detection_out"],
-            "input_shape": [1, 3, 320, 544],
-            "labels_file": "labels.txt",
-            "local_path": "/snap/ovms-engine/components/mnt/model-faster-rcnn/x1"
-          }
-        }
-      }
-    }
-  }
-}
-```
+| Model ID | Actual Model | Purpose | Input | Inference Time |
+|----------|-------------|---------|-------|---------------|
+| faster-rcnn | person-detection-retail-0013 | Person detection | [1,3,320,544] NCHW | ~70ms |
+| efficientnet | age-gender-recognition-retail-0013 | Age/gender classification | [1,3,62,62] NCHW | ~10ms |
 
-### Current models (placeholder for demo)
+### Key components
 
-| Model ID | Actual Model | Purpose | Input | Size |
-|----------|-------------|---------|-------|------|
-| faster-rcnn | person-detection-retail-0013 | Person detection | [1,3,320,544] NCHW | 1.4 MB |
-| efficientnet | age-gender-recognition-retail-0013 | Age/gender classification | [1,3,62,62] NCHW | 4.3 MB |
-
-These are Intel-optimised FP16 models from the OpenVINO Model Zoo, chosen because
-they are small and available for direct download.
+| Component | Version | Role |
+|-----------|---------|------|
+| com.example.ModelManagerCore | 1.0.x | Shadow-driven model lifecycle (install/remove/config) |
+| com.example.InferenceHandler | 1.0.x | Unified inference (frame capture, OVMS call, MQTT publish) |
+| com.example.KvsProducer | 1.0.x | Camera capture, KVS streaming, snapshot writing |
+| ovms-engine (snap) | 1.0.0 | OpenVINO Model Server daemon |
 
 ## Resolved issues (2026-05-20)
 
-1. ~~**Shadow reported state not syncing to cloud**~~: IoT policy was missing
-   shadow actions. Fixed in live policy and `iot-greengrass-setup.py`.
-
-2. ~~**OVMS missing shared libraries**~~: The extraction script now uses
-   `tar --dereference` to resolve symlinks and includes 13 system libraries
-   not present in core24, plus the Python 3.10 stdlib and OVMS Python deps.
-   See `ovms-engine/extract-ovms-libs.sh`.
-
-3. ~~**OVMS server startup failures**~~: Fixed by:
-   - Removing `--target_device` CLI flag (conflicts with `--config_path`)
-   - Bypassing `modelctl run` wrapper (required `OPENAI_BASE_PATH` env)
-   - Setting `LD_LIBRARY_PATH` in engine server scripts
-   - Setting `PYTHONHOME`/`PYTHONPATH` for the embedded Python interpreter
-   - Including OVMS Python deps (`/ovms/python_deps/` and `/ovms/lib/python/`)
-
-4. ~~**modelctl config.poll_seconds not supported**~~: Server scripts now use
-   defaults with `|| echo <value>` fallback when `modelctl get` fails.
+1. ~~Shadow sync~~: IoT policy missing shadow actions → fixed
+2. ~~OVMS missing shared libs~~: Full transitive deps + symlink dereferencing
+3. ~~OVMS server startup~~: Bypassed modelctl, set LD_LIBRARY_PATH/PYTHONHOME
+4. ~~Content interface~~: Works correctly from inside snap namespace
+5. ~~Component path resolution~~: snapd API query for sideloaded revision
+6. ~~Camera contention~~: InferenceHandler reads KvsProducer snapshots
+7. ~~Model switch reliability~~: Proper priority chain + delta-driven switching
 
 ## Known issues
 
-1. **Multiple component revisions accumulating**: Each sideload creates a new
-   revision under `/snap/ovms-engine/components/mnt/model-faster-rcnn/x<N>`.
-   Old revisions should be cleaned up periodically.
+1. **Snapshot freshness**: If KvsProducer stops writing snapshots (camera
+   disconnect), InferenceHandler silently stops inferring (frame returns None).
+   No error reported to user.
 
-2. **OVMS warns about `meta` directory**: The snap component metadata directory
-   sits alongside the model version directory. OVMS logs a warning but functions
-   correctly. Harmless.
+2. **Model labels**: Only person-detection has a human-readable label mapping.
+   Classification model outputs `class_N` indices without label names.
 
 ## Next steps
 
-### Immediate (verify model hot-swap for demo)
-
-1. **Test model switching**: Install faster-rcnn, switch to efficientnet via
-   shadow, verify OVMS unloads one and loads the other without restart.
-
-### Short-term (production models)
-
-2. **Replace placeholder models**: Build `.comp` files with real production
-   models. The current models are Intel's demo retail models.
-
-### Medium-term (store publishing)
-
-3. **Publish ovms-engine to Snap Store**: Once published, the `"source": "snap"`
-   path works without S3 fallback — snapd pulls components directly from the
-   store.
+1. **Add more models** to demonstrate switching variety
+2. **Improve React overlay** with confidence threshold slider affecting display
+3. **Add inference metrics** to dashboard (FPS, latency graph)
