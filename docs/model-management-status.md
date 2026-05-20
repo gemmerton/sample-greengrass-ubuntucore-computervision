@@ -77,10 +77,11 @@ should be replaced with production models.
 
 ## Known issues
 
-1. **Shadow reported state not syncing to cloud**: The local Shadow Manager
-   persists reported state locally but it does not appear in the AWS Console.
-   Likely a named-shadow sync configuration issue in the Greengrass Shadow Manager
-   component config (needs `synchronize` config for the `model-config` shadow).
+1. ~~**Shadow reported state not syncing to cloud**~~: **RESOLVED 2026-05-20**.
+   Root cause: the Greengrass core device IoT policy was missing
+   `iot:GetThingShadow`, `iot:UpdateThingShadow`, `iot:DeleteThingShadow` actions.
+   The ShadowManager sync config was already correct. Fix: updated the IoT policy
+   (live) and the provisioning script (`iot-greengrass-setup.py`).
 
 2. **OVMS service won't start - missing shared libraries**: The `ovms-cpu` component
    is now installed and `modelctl use-engine intel-cpu` succeeds, but the OVMS binary
@@ -111,10 +112,7 @@ should be replaced with production models.
    they need to be set before the server script can run. Run the install hook
    manually or write the config file directly.
 
-2. **Fix shadow sync**: Add `model-config` to the Shadow Manager's `synchronize`
-   configuration so reported state syncs to the cloud. Check the
-   `aws.greengrass.ShadowManager` component config for the
-   `coreThing.namedShadows` list.
+2. ~~**Fix shadow sync**~~: **RESOLVED 2026-05-20** (see Known Issues #1 above).
 
 3. **Verify inference**: Once OVMS is running, test with:
    ```bash

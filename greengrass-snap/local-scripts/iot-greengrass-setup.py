@@ -205,7 +205,10 @@ def create_greengrass_policy(iot_client, policy_name, region, account_id):
                     "iot:Connect",
                     "iot:Publish",
                     "iot:Subscribe",
-                    "iot:Receive"
+                    "iot:Receive",
+                    "iot:GetThingShadow",
+                    "iot:UpdateThingShadow",
+                    "iot:DeleteThingShadow"
                 ],
                 "Resource": "*"
             },

@@ -28,20 +28,30 @@ Output: `kvs-gstreamer_1.0.0_amd64.snap`
 
 The OVMS snap uses a pre-built binary extracted from the official Docker image rather than compiling from source (the Bazel build takes 30+ minutes). **Run the extraction once before the first build, and again whenever you upgrade the OVMS version.**
 
-### Step 1 — Extract the binary from Docker
+### Step 1 — Extract binary and libraries from Docker
 
 ```bash
 cd ovms-engine
-
-OVMS_VERSION="2024.5"
-docker pull openvino/model_server:${OVMS_VERSION}
-docker create --name ovms-tmp openvino/model_server:${OVMS_VERSION}
-docker cp ovms-tmp:/ovms/bin/ovms ./ovms
-docker cp ovms-tmp:/ovms/lib/ ./lib
-docker rm ovms-tmp
+./extract-ovms-libs.sh
 ```
 
-This places `ovms-engine/ovms` (~40 MB) and `ovms-engine/lib/` on disk.  Both paths are listed in `.gitignore` and must not be committed.
+This extracts:
+- `ovms-engine/ovms` (~40 MB) — the OVMS server binary
+- `ovms-engine/lib/` (~310 MB) — all runtime shared libraries including:
+  - OVMS-bundled libraries (OpenVINO, OpenCV, TBB, etc.) from `/ovms/lib/`
+  - System libraries from `/lib/x86_64-linux-gnu/` that are **not** provided by the core24 base snap (libcurl, libpython3.10, libxml2, libicu, etc.)
+
+Both paths are listed in `.gitignore` and must not be committed.
+
+The system library list in the extraction script was determined by:
+1. Running `ldd` recursively on the binary and all `.so` files inside the container
+2. Cross-referencing against `/snap/core24/current/usr/lib/` on a real device
+3. Including the full transitive closure (deps of deps)
+
+If you upgrade `OVMS_VERSION`, re-run the script and verify on device with:
+```bash
+ldd /snap/ovms-engine/components/x1/ovms-cpu/usr/bin/ovms | grep "not found"
+```
 
 > **Why `source-type: local`?**  The `ovms-engine/` directory lives inside a git repository.  Without an explicit `source-type: local` directive snapcraft auto-detects git and only copies tracked files into the build container, silently omitting the untracked `ovms` binary and `lib/` directory.  The `source-type: local` in `snap/snapcraft.yaml` forces a plain directory copy.
 
