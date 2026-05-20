@@ -143,6 +143,9 @@ class InferenceHandler:
 
             if target_model_id and target_model_id in models:
                 entry = models[target_model_id]
+            elif self.active_model_id and self.active_model_id in models:
+                target_model_id = self.active_model_id
+                entry = models[target_model_id]
             else:
                 target_model_id = next(
                     (mid for mid, m in models.items() if m.get("status") == "ready"),
