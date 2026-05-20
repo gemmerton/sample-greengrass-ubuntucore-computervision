@@ -36,7 +36,6 @@ class InferenceHandler:
         self.ipc_client = clientv2.GreengrassCoreIPCClientV2()
         self.model_metadata = None
         self.active_model_id = None
-        self.cap = None
 
         logger.info(
             "InferenceHandler initialized: thing=%s camera=%s ovms=%s interval=%ss",
@@ -140,17 +139,15 @@ class InferenceHandler:
             logger.error("Failed to load active model from shadow: %s", e)
 
     def _capture_and_infer(self):
-        if self.cap is None or not self.cap.isOpened():
-            self.cap = cv2.VideoCapture(self.camera_device)
-            if not self.cap.isOpened():
-                logger.error("Cannot open camera: %s", self.camera_device)
-                return
+        cap = cv2.VideoCapture(self.camera_device)
+        if not cap.isOpened():
+            logger.error("Cannot open camera: %s", self.camera_device)
+            return
 
-        ret, frame = self.cap.read()
+        ret, frame = cap.read()
+        cap.release()
         if not ret:
             logger.warning("Failed to capture frame")
-            self.cap.release()
-            self.cap = None
             return
 
         frame_height, frame_width = frame.shape[:2]
