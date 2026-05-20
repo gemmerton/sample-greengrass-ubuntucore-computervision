@@ -86,6 +86,13 @@ for lib in "${SYSTEM_LIBS[@]}"; do
     fi
 done
 
+# Extract Python 3.10 standard library (required by OVMS Python interpreter module)
+echo "Extracting Python 3.10 stdlib..."
+docker run --rm --entrypoint tar "${OVMS_IMAGE}" \
+    ch --dereference -C / usr/lib/python3.10 \
+    | tar x --strip-components=2 -C ./lib/
+echo "  python3.10/ ($(du -sh ./lib/python3.10 | cut -f1))"
+
 echo ""
 echo "=== Extraction complete ==="
 echo "Binary: ./ovms ($(du -h ./ovms | cut -f1))"

@@ -7,6 +7,9 @@ grpc_port="$(modelctl get grpc.port 2>/dev/null || echo 9000)"
 http_port="$(modelctl get http.port 2>/dev/null || echo 9001)"
 poll_seconds="$(modelctl get config.poll_seconds 2>/dev/null || echo 5)"
 
+export PYTHONHOME="$SNAP_COMPONENTS/ovms-cpu/usr/lib"
+export PYTHONPATH="$SNAP_COMPONENTS/ovms-cpu/usr/lib/python3.10"
+
 exec "$SNAP_COMPONENTS/ovms-cpu/usr/bin/ovms" \
     --config_path "$SNAP_COMMON/config/models_config.json" \
     --port "$grpc_port" \
