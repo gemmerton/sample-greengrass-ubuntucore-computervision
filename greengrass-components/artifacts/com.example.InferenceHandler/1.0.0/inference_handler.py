@@ -103,9 +103,12 @@ class InferenceHandler:
             desired = shadow.get("state", {}).get("desired", {})
 
             target_model_id = desired.get("active_model")
+            logger.info("Loading model: desired.active_model=%s, current=%s",
+                        target_model_id, self.active_model_id)
 
             models = reported.get("models", {})
             if not models:
+                logger.info("No models in reported state")
                 self.model_metadata = None
                 self.active_model_id = None
                 return
@@ -135,8 +138,30 @@ class InferenceHandler:
                 self.active_model_id = target_model_id
                 self.model_metadata = metadata
                 logger.info("Model metadata: %s", json.dumps(metadata, indent=2))
+                self._report_active_model()
         except Exception as e:
             logger.error("Failed to load active model from shadow: %s", e)
+            traceback.print_exc()
+
+    def _report_active_model(self):
+        if not self.thing_name or not self.active_model_id:
+            return
+        try:
+            payload = json.dumps({
+                "state": {
+                    "reported": {
+                        "active_model": self.active_model_id
+                    }
+                }
+            }).encode("utf-8")
+            self.ipc_client.update_thing_shadow(
+                thing_name=self.thing_name,
+                shadow_name=SHADOW_NAME,
+                payload=payload,
+            )
+            logger.info("Reported active_model=%s to shadow", self.active_model_id)
+        except Exception as e:
+            logger.warning("Failed to report active_model: %s", e)
 
     def _capture_and_infer(self):
         cap = cv2.VideoCapture(self.camera_device)

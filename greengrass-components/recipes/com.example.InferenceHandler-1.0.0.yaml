@@ -19,9 +19,10 @@ ComponentConfiguration:
     accessControl:
       aws.greengrass.ShadowManager:
         com.example.InferenceHandler:shadow:1:
-          policyDescription: 'Read model-config shadow for active model metadata'
+          policyDescription: 'Read and update model-config shadow'
           operations:
             - 'aws.greengrass#GetThingShadow'
+            - 'aws.greengrass#UpdateThingShadow'
           resources:
             - '$aws/things/*/shadow/name/model-config'
       aws.greengrass.ipc.mqttproxy:
