@@ -90,11 +90,11 @@ const DashboardContent: React.FC<DashboardProps> = ({
                 MQTT
               </span>
             </div>
+            <EdgeLatencyIndicator latestResult={latestResult} videoElement={videoElement} />
           </div>
 
           {credentials && (
             <>
-              <EdgeLatencyIndicator latestResult={latestResult} videoElement={videoElement} />
               <section className="dashboard__content" aria-label="Live video and analysis">
                 <article className="dashboard__card dashboard__card--video" style={{ position: 'relative' }}>
                   <KvsPlayer

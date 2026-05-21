@@ -1,11 +1,13 @@
 .edge-latency {
   display: flex;
   align-items: center;
-  gap: 16px;
-  justify-content: flex-end;
-  padding: 8px 0;
-  font-size: 0.9rem;
+  gap: 14px;
+  padding: 6px 14px;
+  font-size: 0.85rem;
   color: #eee;
+  border: 1px solid var(--border, #333);
+  border-radius: var(--border-radius-full, 9999px);
+  background: var(--card-bg, #1a1a2e);
 }
 
 .edge-latency__row {
