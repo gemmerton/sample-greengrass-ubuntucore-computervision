@@ -191,7 +191,6 @@
 
 .dashboard__card:hover {
   box-shadow: 0 0 50px rgba(255, 153, 0, 0.2), 0 0 100px rgba(255, 153, 0, 0.08), var(--shadow-xl);
-  transform: translateY(-4px);
   border-color: rgba(255, 153, 0, 0.7);
 }
 
