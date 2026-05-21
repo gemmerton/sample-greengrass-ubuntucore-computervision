@@ -39,7 +39,6 @@ export const EdgeLatencyIndicator: React.FC<EdgeLatencyIndicatorProps> = ({
   if (!latestResult) return null;
 
   const edgeTime = latestResult.timestamp;
-  const videoTime = videoDelaySec !== null ? edgeTime - videoDelaySec : null;
 
   return (
     <div className="edge-latency">
@@ -50,17 +49,11 @@ export const EdgeLatencyIndicator: React.FC<EdgeLatencyIndicatorProps> = ({
         <span className="edge-latency__label">Edge detected</span>
         <span className="edge-latency__time">{formatTime(edgeTime)}</span>
       </div>
-      {videoTime !== null && (
-        <div className="edge-latency__row">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="2" y="7" width="20" height="15" rx="2" ry="2"/><polyline points="17 2 12 7 7 2"/>
-          </svg>
-          <span className="edge-latency__label">Video showing</span>
-          <span className="edge-latency__time">{formatTime(videoTime)}</span>
-        </div>
-      )}
       {videoDelaySec !== null && videoDelaySec > 0 && (
         <div className="edge-latency__advantage">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+          </svg>
           Edge inference {videoDelaySec}s ahead of video
         </div>
       )}
