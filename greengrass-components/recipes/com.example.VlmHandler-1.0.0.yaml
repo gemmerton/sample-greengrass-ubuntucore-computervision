@@ -2,7 +2,7 @@
 RecipeFormatVersion: '2020-01-25'
 ComponentName: com.example.VlmHandler
 ComponentVersion: '1.0.0'
-ComponentDescription: 'VLM inference handler - loads OpenVINO GenAI models for scene risk analysis'
+ComponentDescription: 'VLM inference handler - calls inference snap HTTP API for scene risk analysis'
 ComponentPublisher: AWS
 ComponentDependencies:
   aws.greengrass.TokenExchangeService:
@@ -10,6 +10,7 @@ ComponentDependencies:
 ComponentConfiguration:
   DefaultConfiguration:
     SnapshotDir: "/var/snap/aws-iot-greengrass/common/greengrass/v2/work/com.example.KvsProducer/snapshots"
+    VlmEndpoint: "http://localhost:9090/v1/chat/completions"
     accessControl:
       aws.greengrass.ipc.mqttproxy:
         com.example.VlmHandler:mqttproxy:1:
@@ -45,8 +46,7 @@ Manifests:
         source venv/bin/activate && \
         export AWS_IOT_THING_NAME="{iot:thingName}" && \
         export SNAPSHOT_DIR="{configuration:/SnapshotDir}" && \
-        export TMPDIR="{work:path}" && \
-        export XDG_CACHE_HOME="{work:path}/.cache" && \
+        export VLM_ENDPOINT="{configuration:/VlmEndpoint}" && \
         export PYTHONUNBUFFERED=1 && \
         python3 {artifacts:path}/vlm_handler.py'
   Artifacts:

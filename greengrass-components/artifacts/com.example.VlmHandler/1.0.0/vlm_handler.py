@@ -1,8 +1,8 @@
-"""VlmHandler - OpenVINO GenAI VLM inference for edge scene risk analysis.
+"""VlmHandler - VLM inference via inference snap HTTP API for edge scene risk analysis.
 
-Loads a VLM model via openvino_genai.VLMPipeline, captures frames from the
-shared snapshot directory on a configurable interval, generates structured
-risk assessments, and publishes results to camera/vlm via IoT Core MQTT.
+Calls the VLM inference snap's OpenAI-compatible API (/v1/chat/completions) with
+camera snapshots, parses structured risk assessments, and publishes results to
+camera/vlm via IoT Core MQTT.
 """
 
 import os
@@ -12,9 +12,9 @@ import json
 import logging
 import traceback
 import glob
+import base64
 
-from PIL import Image
-import openvino_genai
+import requests
 import awsiot.greengrasscoreipc.clientv2 as clientv2
 
 sys.path.insert(0, os.path.dirname(__file__))
@@ -35,27 +35,29 @@ class VlmHandler:
             "SNAPSHOT_DIR",
             "/var/snap/aws-iot-greengrass/common/greengrass/v2/work/com.example.KvsProducer/snapshots"
         )
+        self.vlm_endpoint = os.environ.get("VLM_ENDPOINT", "http://localhost:9090/v1/chat/completions")
         self.ipc_client = clientv2.GreengrassCoreIPCClientV2()
         self.shadow_client = CloudShadowClient(self.thing_name, SHADOW_NAME)
 
-        self.pipeline = None
         self.active_model_id = None
         self.system_prompt = ""
         self.user_prompt = ""
         self.inference_interval = 15
         self.max_tokens = 256
 
-        logger.info("VlmHandler initialized: thing=%s snapshot_dir=%s", self.thing_name, self.snapshot_dir)
+        logger.info(
+            "VlmHandler initialized: thing=%s snapshot_dir=%s endpoint=%s",
+            self.thing_name, self.snapshot_dir, self.vlm_endpoint,
+        )
 
     def run(self):
         self._subscribe_to_shadow_delta()
-        self._load_config_and_model()
+        self._load_config()
 
         while True:
-            if self.pipeline is None:
-                logger.info("No VLM model loaded, waiting...")
-                time.sleep(5)
-                self._load_config_and_model()
+            if not self._endpoint_healthy():
+                logger.info("VLM endpoint not available at %s, waiting...", self.vlm_endpoint)
+                time.sleep(10)
                 continue
 
             try:
@@ -65,6 +67,14 @@ class VlmHandler:
                 traceback.print_exc()
 
             time.sleep(self.inference_interval)
+
+    def _endpoint_healthy(self):
+        try:
+            base_url = self.vlm_endpoint.rsplit("/v1/", 1)[0]
+            resp = requests.get(f"{base_url}/v1/models", timeout=3)
+            return resp.status_code == 200
+        except (requests.ConnectionError, requests.Timeout):
+            return False
 
     def _subscribe_to_shadow_delta(self):
         if not self.thing_name:
@@ -100,12 +110,13 @@ class VlmHandler:
             if "active_vlm_model" in state:
                 new_model = state["active_vlm_model"]
                 if new_model != self.active_model_id:
-                    logger.info("VLM model switch requested: %s -> %s", self.active_model_id, new_model)
-                    self._switch_model(new_model)
+                    self.active_model_id = new_model
+                    logger.info("Active VLM model set to: %s", new_model)
+                    self._report_active_vlm_model()
         except Exception as e:
             logger.error("Failed to handle shadow delta: %s", e)
 
-    def _load_config_and_model(self):
+    def _load_config(self):
         shadow = self.shadow_client.get_shadow()
         reported = shadow.get("state", {}).get("reported", {})
         desired = shadow.get("state", {}).get("desired", {})
@@ -116,65 +127,59 @@ class VlmHandler:
         self.inference_interval = vlm_config.get("inference_interval", 15)
         self.max_tokens = vlm_config.get("max_tokens", 256)
 
-        target_model_id = desired.get("active_vlm_model") or reported.get("active_vlm_model")
-        if not target_model_id:
-            models = reported.get("models", {})
-            target_model_id = next(
-                (mid for mid, m in models.items()
-                 if isinstance(m, dict) and m.get("type") == "vlm" and m.get("status") == "ready"),
-                None,
-            )
+        self.active_model_id = (
+            desired.get("active_vlm_model")
+            or reported.get("active_vlm_model")
+            or "vlm-snap"
+        )
 
-        if target_model_id and target_model_id != self.active_model_id:
-            self._switch_model(target_model_id)
-
-    def _switch_model(self, model_id):
-        shadow = self.shadow_client.get_shadow()
-        reported = shadow.get("state", {}).get("reported", {})
-        models = reported.get("models", {})
-
-        if model_id not in models:
-            logger.warning("VLM model '%s' not in inventory", model_id)
-            return
-
-        entry = models[model_id]
-        if entry.get("status") != "ready":
-            logger.warning("VLM model '%s' not ready (status=%s)", model_id, entry.get("status"))
-            return
-
-        model_path = entry.get("model_metadata", {}).get("local_path")
-        if not model_path:
-            logger.error("VLM model '%s' has no local_path", model_id)
-            return
-
-        logger.info("Loading VLM model '%s' from %s", model_id, model_path)
-        try:
-            self.pipeline = openvino_genai.VLMPipeline(model_path, "CPU")
-            self.active_model_id = model_id
-            logger.info("VLM model '%s' loaded successfully", model_id)
-            self._report_active_vlm_model()
-        except Exception as e:
-            logger.error("Failed to load VLM model '%s': %s", model_id, e)
-            self.pipeline = None
+        if not reported.get("vlm_config") and self.system_prompt:
+            self._report_vlm_config()
+        self._report_active_vlm_model()
 
     def _inference_cycle(self):
-        image = self._get_latest_snapshot()
-        if image is None:
+        image_b64 = self._get_latest_snapshot_b64()
+        if image_b64 is None:
             return
 
-        prompt = self._build_prompt()
         start_time = time.time()
 
+        messages = []
+        if self.system_prompt:
+            messages.append({"role": "system", "content": self.system_prompt})
+
+        user_content = []
+        user_content.append({
+            "type": "image_url",
+            "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"},
+        })
+        user_content.append({
+            "type": "text",
+            "text": self.user_prompt or "Describe what you see in this image.",
+        })
+        messages.append({"role": "user", "content": user_content})
+
+        request_body = {
+            "messages": messages,
+            "max_tokens": self.max_tokens,
+            "temperature": 0.1,
+        }
+
         try:
-            generation_config = openvino_genai.GenerationConfig()
-            generation_config.max_new_tokens = self.max_tokens
-            raw_output = self.pipeline.generate(prompt, image=image, generation_config=generation_config)
-        except Exception as e:
-            logger.error("VLM generation failed: %s", e)
+            resp = requests.post(
+                self.vlm_endpoint,
+                json=request_body,
+                timeout=120,
+            )
+            resp.raise_for_status()
+            result = resp.json()
+        except requests.RequestException as e:
+            logger.error("VLM API request failed: %s", e)
             return
 
         inference_time_ms = round((time.time() - start_time) * 1000, 1)
 
+        raw_output = result.get("choices", [{}])[0].get("message", {}).get("content", "")
         response = self._parse_response(raw_output)
 
         payload = {
@@ -192,14 +197,6 @@ class VlmHandler:
 
         self._publish(payload)
 
-    def _build_prompt(self):
-        parts = []
-        if self.system_prompt:
-            parts.append(self.system_prompt)
-        if self.user_prompt:
-            parts.append(self.user_prompt)
-        return "\n\n".join(parts) if parts else "Describe what you see in this image."
-
     def _parse_response(self, raw_output):
         try:
             text = raw_output.strip()
@@ -214,7 +211,7 @@ class VlmHandler:
             pass
         return None
 
-    def _get_latest_snapshot(self):
+    def _get_latest_snapshot_b64(self):
         if not os.path.isdir(self.snapshot_dir):
             return None
         try:
@@ -224,7 +221,8 @@ class VlmHandler:
             latest = snapshots[-1]
             if time.time() - os.path.getmtime(latest) > 30:
                 return None
-            return Image.open(latest)
+            with open(latest, "rb") as f:
+                return base64.b64encode(f.read()).decode("ascii")
         except Exception as e:
             logger.error("Failed to read snapshot: %s", e)
             return None
