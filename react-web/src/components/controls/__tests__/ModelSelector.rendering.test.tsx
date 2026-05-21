@@ -84,6 +84,8 @@ describe('ModelSelector Rendering', () => {
     test('renders "no models installed" when models map is empty', async () => {
       const emptyState: ModelConfigShadowState = {
         reported_active_model: null,
+        reported_active_vlm_model: null,
+        reported_vlm_config: null,
         reported_models: {},
       };
       mockGetModelConfigShadow.mockResolvedValue(emptyState);
@@ -102,6 +104,8 @@ describe('ModelSelector Rendering', () => {
     test('renders all models with correct name, ID, version, and status', async () => {
       const state: ModelConfigShadowState = {
         reported_active_model: null,
+        reported_active_vlm_model: null,
+        reported_vlm_config: null,
         reported_models: {
           'faster-rcnn': {
             status: 'ready',
@@ -162,6 +166,8 @@ describe('ModelSelector Rendering', () => {
     test('active model has distinct visual marker (Active badge)', async () => {
       const state: ModelConfigShadowState = {
         reported_active_model: 'faster-rcnn',
+        reported_active_vlm_model: null,
+        reported_vlm_config: null,
         reported_models: {
           'faster-rcnn': {
             status: 'ready',
@@ -199,6 +205,8 @@ describe('ModelSelector Rendering', () => {
     test('active model not in inventory shows "not found" indicator', async () => {
       const state: ModelConfigShadowState = {
         reported_active_model: 'missing-model',
+        reported_active_vlm_model: null,
+        reported_vlm_config: null,
         reported_models: {
           'faster-rcnn': {
             status: 'ready',
@@ -230,6 +238,8 @@ describe('ModelSelector Rendering', () => {
     test('failed model displays failure reason', async () => {
       const state: ModelConfigShadowState = {
         reported_active_model: null,
+        reported_active_vlm_model: null,
+        reported_vlm_config: null,
         reported_models: {
           'broken-model': {
             status: 'failed',
@@ -257,6 +267,8 @@ describe('ModelSelector Rendering', () => {
     test('failed model without failure reason shows generic "Failed" message', async () => {
       const state: ModelConfigShadowState = {
         reported_active_model: null,
+        reported_active_vlm_model: null,
+        reported_vlm_config: null,
         reported_models: {
           'broken-model': {
             status: 'failed',

@@ -43,6 +43,8 @@ vi.mock('../../../hooks/useAuthenticatedAWS', () => ({
 function createMockShadowState(overrides?: Partial<ModelConfigShadowState>): ModelConfigShadowState {
   return {
     reported_active_model: 'model-a',
+    reported_active_vlm_model: null,
+    reported_vlm_config: null,
     reported_models: {
       'model-a': {
         status: 'ready',
@@ -354,6 +356,8 @@ describe('ModelSelector Interaction and State Machine', () => {
       // Mock poll to return model-b with status 'failed'
       const failedState: ModelConfigShadowState = {
         reported_active_model: 'model-a',
+        reported_active_vlm_model: null,
+        reported_vlm_config: null,
         reported_models: {
           ...createMockShadowState().reported_models,
           'model-b': {

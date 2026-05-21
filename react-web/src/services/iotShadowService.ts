@@ -4,6 +4,7 @@
 
 import { IoTDataPlaneClient, GetThingShadowCommand, UpdateThingShadowCommand } from '@aws-sdk/client-iot-data-plane';
 import { ModelConfigShadowState, ModelEntry } from '../types/modelConfig';
+import type { VlmConfig } from '../types/vlm';
 
 const SHADOW_NAME = 'inference-config';
 const MODEL_CONFIG_SHADOW_NAME = 'model-config';
@@ -19,12 +20,18 @@ export interface InferenceConfig {
 export function parseModelConfigShadow(payload: any): ModelConfigShadowState {
   const reported = payload?.state?.reported ?? {};
   const rawActiveModel = reported.active_model;
+  const rawActiveVlmModel = reported.active_vlm_model;
   const rawModels = reported.models ?? {};
+  const rawVlmConfig = reported.vlm_config;
 
-  // Normalize active_model: treat null, undefined, empty string as null
   const reported_active_model =
     typeof rawActiveModel === 'string' && rawActiveModel.trim().length > 0
       ? rawActiveModel
+      : null;
+
+  const reported_active_vlm_model =
+    typeof rawActiveVlmModel === 'string' && rawActiveVlmModel.trim().length > 0
+      ? rawActiveVlmModel
       : null;
 
   // Parse each model entry defensively
@@ -36,6 +43,7 @@ export function parseModelConfigShadow(payload: any): ModelConfigShadowState {
         status: ['ready', 'installing', 'failed'].includes(e.status)
           ? e.status
           : 'failed',
+        type: e.type === 'vlm' ? 'vlm' : 'cv',
         model_metadata: {
           model_name: e.model_metadata?.model_name ?? modelId,
           version: e.model_metadata?.version ?? 'unknown',
@@ -49,7 +57,16 @@ export function parseModelConfigShadow(payload: any): ModelConfigShadowState {
     }
   }
 
-  return { reported_active_model, reported_models };
+  const reported_vlm_config: VlmConfig | null = rawVlmConfig
+    ? {
+        system_prompt: rawVlmConfig.system_prompt ?? '',
+        user_prompt: rawVlmConfig.user_prompt ?? '',
+        inference_interval: rawVlmConfig.inference_interval ?? 15,
+        max_tokens: rawVlmConfig.max_tokens ?? 256,
+      }
+    : null;
+
+  return { reported_active_model, reported_active_vlm_model, reported_models, reported_vlm_config };
 }
 
 export class IotShadowService {
@@ -129,6 +146,51 @@ export class IotShadowService {
         `Failed to set active model '${modelId}' for thing '${thingName}': ${error.message ?? error}`
       );
     }
+  }
+
+  async setActiveVlmModel(
+    thingName: string,
+    credentials: any,
+    region: string,
+    modelId: string
+  ): Promise<void> {
+    const client = this.getClient(credentials, region);
+    const payload = JSON.stringify({
+      state: { desired: { active_vlm_model: modelId } },
+    });
+    const command = new UpdateThingShadowCommand({
+      thingName,
+      shadowName: MODEL_CONFIG_SHADOW_NAME,
+      payload: new TextEncoder().encode(payload),
+    });
+    await client.send(command);
+  }
+
+  async getVlmConfig(
+    thingName: string,
+    credentials: any,
+    region: string
+  ): Promise<VlmConfig | null> {
+    const state = await this.getModelConfigShadow(thingName, credentials, region);
+    return state?.reported_vlm_config ?? null;
+  }
+
+  async setVlmConfig(
+    thingName: string,
+    credentials: any,
+    region: string,
+    config: VlmConfig
+  ): Promise<void> {
+    const client = this.getClient(credentials, region);
+    const payload = JSON.stringify({
+      state: { desired: { vlm_config: config } },
+    });
+    const command = new UpdateThingShadowCommand({
+      thingName,
+      shadowName: MODEL_CONFIG_SHADOW_NAME,
+      payload: new TextEncoder().encode(payload),
+    });
+    await client.send(command);
   }
 }
 
