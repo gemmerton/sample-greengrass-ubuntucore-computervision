@@ -191,6 +191,7 @@ class ModelManagerCore:
             model_config: Dict with 'source' ("snap" or "s3") and optionally 's3_uri'.
         """
         source = model_config.get("source")
+        model_type = model_config.get("type", "cv")
         if source not in ("snap", "s3"):
             logger.error(
                 "Invalid source '%s' for model '%s', must be 'snap' or 's3'",
@@ -198,26 +199,26 @@ class ModelManagerCore:
                 model_id,
             )
             self._report_model_status(
-                model_id, "failed", reason=f"Invalid source: {source}"
+                model_id, "failed", reason=f"Invalid source: {source}", model_type=model_type
             )
             return
 
         # Report installing status
-        self._report_model_status(model_id, "installing")
+        self._report_model_status(model_id, "installing", model_type=model_type)
 
         if source == "snap":
-            self._install_snap_model(model_id, model_config)
+            self._install_snap_model(model_id, model_config, model_type=model_type)
         elif source == "s3":
             s3_uri = model_config.get("s3_uri")
             if not s3_uri:
                 logger.error("S3 model '%s' missing required 's3_uri' field", model_id)
                 self._report_model_status(
-                    model_id, "failed", reason="Missing s3_uri field"
+                    model_id, "failed", reason="Missing s3_uri field", model_type=model_type
                 )
                 return
-            self._install_s3_model(model_id, s3_uri)
+            self._install_s3_model(model_id, s3_uri, model_type=model_type)
 
-    def _install_snap_model(self, model_id, model_config=None):
+    def _install_snap_model(self, model_id, model_config=None, model_type="cv"):
         """Install a model via snap component and read its manifest.
 
         For store-installed snaps, installs the component directly from the
@@ -227,6 +228,7 @@ class ModelManagerCore:
         Args:
             model_id: The model identifier (e.g. 'faster-rcnn').
             model_config: Optional dict with 'comp_s3_uri' for sideloaded fallback.
+            model_type: Model type, either 'cv' (default) or 'vlm'.
         """
         component_name = f"model-{model_id}"
         logger.info("Installing snap component: %s+%s", self.SNAP_NAME, component_name)
@@ -239,7 +241,7 @@ class ModelManagerCore:
             except SnapdError as e:
                 logger.error("Store install failed for '%s+%s': %s", self.SNAP_NAME, component_name, e)
                 self._report_model_status(
-                    model_id, "failed", reason=f"snap store install failed: {e}"
+                    model_id, "failed", reason=f"snap store install failed: {e}", model_type=model_type
                 )
                 return
         else:
@@ -260,6 +262,7 @@ class ModelManagerCore:
                         f"Snap '{self.SNAP_NAME}' is sideloaded; provide comp_s3_uri "
                         f"or configure COMP_S3_BUCKET for component download"
                     ),
+                    model_type=model_type,
                 )
                 return
 
@@ -272,18 +275,18 @@ class ModelManagerCore:
                 )
             except FileNotFoundError as e:
                 logger.error("Comp file not found after download: %s", e)
-                self._report_model_status(model_id, "failed", reason=str(e))
+                self._report_model_status(model_id, "failed", reason=str(e), model_type=model_type)
                 return
             except SnapdError as e:
                 logger.error("Sideload failed for '%s+%s': %s", self.SNAP_NAME, component_name, e)
                 self._report_model_status(
-                    model_id, "failed", reason=f"snap sideload failed: {e}"
+                    model_id, "failed", reason=f"snap sideload failed: {e}", model_type=model_type
                 )
                 return
             except Exception as e:
                 logger.error("Failed to download/sideload component: %s", e)
                 self._report_model_status(
-                    model_id, "failed", reason=f"comp download failed: {e}"
+                    model_id, "failed", reason=f"comp download failed: {e}", model_type=model_type
                 )
                 return
             finally:
@@ -306,7 +309,7 @@ class ModelManagerCore:
             except json.JSONDecodeError as e:
                 logger.error("Invalid JSON in manifest at %s: %s", manifest_path, e)
                 self._report_model_status(
-                    model_id, "failed", reason=f"Invalid manifest.json: {e}"
+                    model_id, "failed", reason=f"Invalid manifest.json: {e}", model_type=model_type
                 )
                 return
 
@@ -318,6 +321,7 @@ class ModelManagerCore:
             self._report_model_status(
                 model_id, "failed",
                 reason=f"manifest.json not accessible for model '{model_id}'",
+                model_type=model_type,
             )
             return
 
@@ -332,6 +336,7 @@ class ModelManagerCore:
             self._report_model_status(
                 model_id, "failed",
                 reason=f"Cannot resolve component path for model-{model_id}",
+                model_type=model_type,
             )
             return
 
@@ -343,6 +348,9 @@ class ModelManagerCore:
             "input_shape": manifest.get("input_shape"),
             "labels_file": manifest.get("labels_file"),
             "local_path": model_path,
+            "default_system_prompt": manifest.get("default_system_prompt"),
+            "default_user_prompt": manifest.get("default_user_prompt"),
+            "max_tokens": manifest.get("max_tokens"),
         }
 
         logger.info(
@@ -350,7 +358,7 @@ class ModelManagerCore:
             model_id,
             json.dumps(model_metadata, indent=2),
         )
-        self._report_model_status(model_id, "ready", model_metadata=model_metadata)
+        self._report_model_status(model_id, "ready", model_metadata=model_metadata, model_type=model_type)
 
     def _download_manifest_from_s3(self, model_id):
         """Download manifest.json from S3 for a model component.
@@ -499,7 +507,7 @@ class ModelManagerCore:
             raise ValueError(f"Invalid S3 URI: {s3_uri}")
         return match.group(1), match.group(2)
 
-    def _install_s3_model(self, model_id, s3_uri):
+    def _install_s3_model(self, model_id, s3_uri, model_type="cv"):
         """Download a model from S3 and read its manifest.
 
         Parses the S3 URI to extract bucket and prefix, downloads all objects
@@ -509,6 +517,7 @@ class ModelManagerCore:
         Args:
             model_id: The model identifier (e.g. 'custom-ppe-detector').
             s3_uri: S3 URI in the format 's3://bucket-name/prefix/path/'.
+            model_type: Model type, either 'cv' (default) or 'vlm'.
         """
         logger.info("Downloading S3 model '%s' from '%s'", model_id, s3_uri)
 
@@ -516,7 +525,7 @@ class ModelManagerCore:
         bucket, prefix = self._parse_s3_uri(s3_uri)
         if bucket is None:
             self._report_model_status(
-                model_id, "failed", reason=f"Invalid s3_uri format: {s3_uri}"
+                model_id, "failed", reason=f"Invalid s3_uri format: {s3_uri}", model_type=model_type
             )
             return
 
@@ -558,7 +567,8 @@ class ModelManagerCore:
                 logger.error("No objects found at s3://%s/%s", bucket, prefix)
                 self._report_model_status(
                     model_id, "failed",
-                    reason=f"No objects found at {s3_uri}"
+                    reason=f"No objects found at {s3_uri}",
+                    model_type=model_type,
                 )
                 return
 
@@ -569,7 +579,7 @@ class ModelManagerCore:
         except Exception as e:
             logger.error("S3 download failed for model '%s': %s", model_id, e)
             self._report_model_status(
-                model_id, "failed", reason=f"S3 download failed: {e}"
+                model_id, "failed", reason=f"S3 download failed: {e}", model_type=model_type
             )
             return
 
@@ -582,13 +592,14 @@ class ModelManagerCore:
             logger.error("Manifest not found at %s", manifest_path)
             self._report_model_status(
                 model_id, "failed",
-                reason=f"manifest.json not found in downloaded model at {manifest_path}"
+                reason=f"manifest.json not found in downloaded model at {manifest_path}",
+                model_type=model_type,
             )
             return
         except json.JSONDecodeError as e:
             logger.error("Invalid JSON in manifest at %s: %s", manifest_path, e)
             self._report_model_status(
-                model_id, "failed", reason=f"Invalid manifest.json: {e}"
+                model_id, "failed", reason=f"Invalid manifest.json: {e}", model_type=model_type
             )
             return
 
@@ -601,6 +612,9 @@ class ModelManagerCore:
             "input_shape": manifest.get("input_shape"),
             "labels_file": manifest.get("labels_file"),
             "local_path": local_model_dir,
+            "default_system_prompt": manifest.get("default_system_prompt"),
+            "default_user_prompt": manifest.get("default_user_prompt"),
+            "max_tokens": manifest.get("max_tokens"),
         }
 
         logger.info(
@@ -608,7 +622,7 @@ class ModelManagerCore:
             model_id,
             json.dumps(model_metadata, indent=2),
         )
-        self._report_model_status(model_id, "ready", model_metadata=model_metadata)
+        self._report_model_status(model_id, "ready", model_metadata=model_metadata, model_type=model_type)
 
     @staticmethod
     def _parse_s3_uri(s3_uri):
@@ -1151,6 +1165,8 @@ class ModelManagerCore:
                 continue
             if model_entry.get("status") != "ready":
                 continue
+            if model_entry.get("type") == "vlm":
+                continue
             metadata = model_entry.get("model_metadata", {})
             if not isinstance(metadata, dict):
                 continue
@@ -1177,7 +1193,7 @@ class ModelManagerCore:
         except Exception as e:
             logger.error("Failed to regenerate OVMS config: %s", e)
 
-    def _report_model_status(self, model_id, status, reason=None, model_metadata=None):
+    def _report_model_status(self, model_id, status, reason=None, model_metadata=None, model_type="cv"):
         """Update the shadow reported state for a specific model.
 
         Args:
@@ -1185,8 +1201,9 @@ class ModelManagerCore:
             status: One of 'installing', 'ready', or 'failed'.
             reason: Human-readable error string (required when status is 'failed').
             model_metadata: Dict of model metadata (when status is 'ready').
+            model_type: Model type, either 'cv' (default) or 'vlm'.
         """
-        model_entry = {"status": status}
+        model_entry = {"status": status, "type": model_type}
         if reason:
             model_entry["reason"] = reason
         if model_metadata:
@@ -1195,9 +1212,35 @@ class ModelManagerCore:
         self.reported_models[model_id] = model_entry
         self._update_shadow_reported()
 
-        # Regenerate OVMS config whenever a model reaches ready status
-        if status == "ready":
+        if status == "ready" and model_type != "vlm":
             self._regenerate_ovms_config()
+
+        if status == "ready" and model_type == "vlm":
+            self._seed_vlm_config_defaults(model_metadata)
+
+    def _seed_vlm_config_defaults(self, model_metadata):
+        """Seed vlm_config in shadow from manifest defaults if not already set."""
+        if not model_metadata:
+            return
+        shadow = self.shadow_client.get_shadow()
+        reported = shadow.get("state", {}).get("reported", {})
+        if reported.get("vlm_config"):
+            logger.info("vlm_config already exists in shadow, not seeding defaults")
+            return
+
+        default_system = model_metadata.get("default_system_prompt", "")
+        default_user = model_metadata.get("default_user_prompt", "")
+        if not default_system:
+            return
+
+        vlm_config = {
+            "system_prompt": default_system,
+            "user_prompt": default_user,
+            "inference_interval": 15,
+            "max_tokens": model_metadata.get("max_tokens", 256),
+        }
+        self.shadow_client.update_reported({"vlm_config": vlm_config})
+        logger.info("Seeded vlm_config defaults from model manifest")
 
     def _update_shadow_reported(self):
         """Push the full reported state to the shadow."""
