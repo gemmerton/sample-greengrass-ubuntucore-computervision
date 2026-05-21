@@ -11,6 +11,7 @@ const BOX_COLOR = '#00ff88';
 const TEXT_COLOR = '#ffffff';
 const TEXT_BG = 'rgba(0, 0, 0, 0.7)';
 const FONT = '14px monospace';
+const STALE_TIMEOUT_MS = 5000;
 
 export const InferenceOverlay: React.FC<InferenceOverlayProps> = ({
   result,
@@ -18,6 +19,7 @@ export const InferenceOverlay: React.FC<InferenceOverlayProps> = ({
   vlmRiskLevel,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -31,6 +33,11 @@ export const InferenceOverlay: React.FC<InferenceOverlayProps> = ({
     canvas.height = rect.height;
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
 
     if (!result) return;
 
@@ -62,6 +69,18 @@ export const InferenceOverlay: React.FC<InferenceOverlayProps> = ({
       ctx.fillStyle = color;
       ctx.fillText(text, badgeX, badgeY + 16);
     }
+
+    timeoutRef.current = setTimeout(() => {
+      const c = canvasRef.current;
+      if (c) {
+        const context = c.getContext('2d');
+        if (context) context.clearRect(0, 0, c.width, c.height);
+      }
+    }, STALE_TIMEOUT_MS);
+
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    };
   }, [result, videoElement, vlmRiskLevel]);
 
   useEffect(() => {
