@@ -113,6 +113,8 @@ Manifests:
           export CAMERA_DEVICE="{configuration:/CameraDevice}" && \
           export AWS_IOT_THING_NAME="{iot:thingName}" && \
           export KVS_LOG4CPLUS_CONFIG="{work:path}/kvs_log_configuration" && \
+          export PYTHONUNBUFFERED=1 && \
+          export PYTHONDONTWRITEBYTECODE=1 && \
           source {work:path}/venv/bin/activate && \
           cd {work:path}/run && \
           python3 {artifacts:path}/kvs_producer.py'

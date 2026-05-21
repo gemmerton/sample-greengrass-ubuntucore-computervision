@@ -88,6 +88,8 @@ Manifests:
         export COMP_S3_BUCKET="{configuration:/CompS3Bucket}" && \
         export COMP_S3_PREFIX="{configuration:/CompS3Prefix}" && \
         export HEALTH_CHECK_INTERVAL="{configuration:/HealthCheckInterval}" && \
+        export PYTHONUNBUFFERED=1 && \
+        export PYTHONDONTWRITEBYTECODE=1 && \
         python3 {artifacts:path}/model_manager_core.py'
   Artifacts:
     - Uri: model_manager_core.py
