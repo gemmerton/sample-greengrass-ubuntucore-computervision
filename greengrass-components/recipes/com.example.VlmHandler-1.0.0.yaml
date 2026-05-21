@@ -1,0 +1,60 @@
+---
+RecipeFormatVersion: '2020-01-25'
+ComponentName: com.example.VlmHandler
+ComponentVersion: '1.0.0'
+ComponentDescription: 'VLM inference handler - loads OpenVINO GenAI models for scene risk analysis'
+ComponentPublisher: AWS
+ComponentDependencies:
+  aws.greengrass.TokenExchangeService:
+    VersionRequirement: '^2.0.0'
+ComponentConfiguration:
+  DefaultConfiguration:
+    SnapshotDir: "/var/snap/aws-iot-greengrass/common/greengrass/v2/work/com.example.KvsProducer/snapshots"
+    accessControl:
+      aws.greengrass.ipc.mqttproxy:
+        com.example.VlmHandler:mqttproxy:1:
+          policyDescription: 'Publish VLM analysis results to IoT Core'
+          operations:
+            - 'aws.greengrass#PublishToIoTCore'
+          resources:
+            - 'camera/vlm'
+        com.example.VlmHandler:mqttproxy:2:
+          policyDescription: 'Subscribe to model-config shadow delta for config changes'
+          operations:
+            - 'aws.greengrass#SubscribeToIoTCore'
+          resources:
+            - '$aws/things/*/shadow/name/model-config/update/delta'
+Manifests:
+- Platform:
+    os: all
+    runtime: '*'
+  Lifecycle:
+    Install:
+      Timeout: 600
+      Script: |
+        /bin/bash -c 'set -e && \
+        python3 -m venv --without-pip --system-site-packages venv/ && \
+        source venv/bin/activate && \
+        python3 {artifacts:path}/get-pip.py && \
+        export TMPDIR="{work:path}" && \
+        python3 -m pip install -r {artifacts:path}/requirements.txt && \
+        deactivate'
+    Run:
+      Script: |
+        /bin/bash -c 'set -e && \
+        source venv/bin/activate && \
+        export AWS_IOT_THING_NAME="{iot:thingName}" && \
+        export SNAPSHOT_DIR="{configuration:/SnapshotDir}" && \
+        export TMPDIR="{work:path}" && \
+        export XDG_CACHE_HOME="{work:path}/.cache" && \
+        export PYTHONUNBUFFERED=1 && \
+        python3 {artifacts:path}/vlm_handler.py'
+  Artifacts:
+    - Uri: vlm_handler.py
+      Unarchive: NONE
+    - Uri: cloud_shadow.py
+      Unarchive: NONE
+    - Uri: get-pip.py
+      Unarchive: NONE
+    - Uri: requirements.txt
+      Unarchive: NONE

@@ -1,0 +1,5 @@
+openvino>=2024.0
+openvino-genai>=2024.0
+Pillow>=10.0
+boto3>=1.28
+awsiotsdk>=1.0
