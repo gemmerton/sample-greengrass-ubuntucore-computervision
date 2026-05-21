@@ -28,7 +28,7 @@ export const VlmPanel: React.FC<VlmPanelProps> = ({ latestResult }) => {
     return (
       <div className="vlm-panel vlm-panel--empty">
         <div className="vlm-panel__placeholder">
-          <span className="vlm-panel__placeholder-icon">🔍</span>
+          <svg className="vlm-panel__placeholder-icon" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
           <p>Waiting for VLM analysis...</p>
           <p className="vlm-panel__placeholder-hint">Scene risk assessment will appear here</p>
         </div>
@@ -91,7 +91,7 @@ export const VlmPanel: React.FC<VlmPanelProps> = ({ latestResult }) => {
       )}
 
       <div className="vlm-panel__footer">
-        <span className="vlm-panel__inference-time">⏱ {(inference_time_ms / 1000).toFixed(1)}s</span>
+        <span className="vlm-panel__inference-time"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{verticalAlign: 'middle', marginRight: '4px'}}><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>{(inference_time_ms / 1000).toFixed(1)}s</span>
         <span className="vlm-panel__model">{model_name}</span>
       </div>
 

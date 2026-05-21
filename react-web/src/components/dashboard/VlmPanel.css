@@ -20,9 +20,9 @@
 }
 
 .vlm-panel__placeholder-icon {
-  font-size: 2rem;
   display: block;
-  margin-bottom: 8px;
+  margin: 0 auto 8px;
+  stroke: var(--text-muted, #888);
 }
 
 .vlm-panel__placeholder-hint {
