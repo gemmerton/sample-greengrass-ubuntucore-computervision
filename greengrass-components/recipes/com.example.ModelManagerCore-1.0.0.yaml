@@ -5,8 +5,6 @@ ComponentVersion: '1.0.0'
 ComponentDescription: 'Bridges IoT Device Shadow events to snap management and OVMS configuration for dynamic model lifecycle management'
 ComponentPublisher: AWS
 ComponentDependencies:
-  aws.greengrass.ShadowManager:
-    VersionRequirement: '^2.0.0'
   aws.greengrass.TokenExchangeService:
     VersionRequirement: '^2.0.0'
 ComponentConfiguration:
@@ -51,14 +49,6 @@ ComponentConfiguration:
     HealthCheckInterval: "30"
 
     accessControl:
-      aws.greengrass.ShadowManager:
-        com.example.ModelManagerCore:shadow:1:
-          policyDescription: 'Allows read and write access to the model-config named shadow'
-          operations:
-            - 'aws.greengrass#GetThingShadow'
-            - 'aws.greengrass#UpdateThingShadow'
-          resources:
-            - '$aws/things/*/shadow/name/model-config'
       aws.greengrass.ipc.mqttproxy:
         com.example.ModelManagerCore:mqttproxy:1:
           policyDescription: 'Allows subscription to model-config shadow delta updates'
@@ -105,6 +95,8 @@ Manifests:
     - Uri: ovms_config.py
       Unarchive: NONE
     - Uri: snapd_client.py
+      Unarchive: NONE
+    - Uri: cloud_shadow.py
       Unarchive: NONE
     - Uri: get-pip.py
       Unarchive: NONE

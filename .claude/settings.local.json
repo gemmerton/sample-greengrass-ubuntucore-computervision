@@ -24,7 +24,28 @@
       "Bash(mkdir -p /tmp/comp-inspect)",
       "Bash(unsquashfs -l /tmp/model-build/faster-rcnn/model.xml)",
       "Bash(unsquashfs -l /tmp/comp-inspect/ovms-cpu.comp)",
-      "Bash(unsquashfs -cat /tmp/comp-inspect/ovms-cpu.comp meta/component.yaml)"
+      "Bash(unsquashfs -cat /tmp/comp-inspect/ovms-cpu.comp meta/component.yaml)",
+      "Bash(scp *)",
+      "Bash(xargs cat)",
+      "Bash(finch --version)",
+      "Bash(finch ps *)",
+      "Bash(finch images *)",
+      "Bash(finch pull *)",
+      "Bash(finch rm *)",
+      "Bash(finch create *)",
+      "Bash(finch cp *)",
+      "Bash(chmod +x *)",
+      "Bash(finch run --platform linux/amd64 --name ovms-gomp-check --entrypoint bash openvino/model_server:2024.5 -c ' *)",
+      "Bash(finch run --platform linux/amd64 --name ovms-pugi-check --entrypoint bash openvino/model_server:2024.5 -c ' *)",
+      "Bash(finch run --platform linux/amd64 --name ovms-symcheck --entrypoint bash openvino/model_server:2024.5 -c ' *)",
+      "Bash(finch run *)",
+      "Bash(tar x *)",
+      "Bash(tar czf *)",
+      "Bash(.venv/bin/python3 *)",
+      "Bash(AWS_PROFILE=\"gemmerto+ubuntu-Admin\" .venv/bin/python3 *)",
+      "Skill(superpowers:brainstorming)",
+      "Skill(superpowers:writing-plans)",
+      "Skill(superpowers:subagent-driven-development)"
     ]
   }
 }

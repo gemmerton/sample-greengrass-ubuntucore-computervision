@@ -5,8 +5,6 @@ ComponentVersion: '1.0.0'
 ComponentDescription: 'Unified inference handler - captures frames, runs OVMS inference, publishes results via MQTT'
 ComponentPublisher: AWS
 ComponentDependencies:
-  aws.greengrass.ShadowManager:
-    VersionRequirement: '^2.0.0'
   aws.greengrass.TokenExchangeService:
     VersionRequirement: '^2.0.0'
 ComponentConfiguration:
@@ -17,14 +15,6 @@ ComponentConfiguration:
     ConfidenceThreshold: "0.5"
     PubTopic: "camera/inference"
     accessControl:
-      aws.greengrass.ShadowManager:
-        com.example.InferenceHandler:shadow:1:
-          policyDescription: 'Read and update model-config shadow'
-          operations:
-            - 'aws.greengrass#GetThingShadow'
-            - 'aws.greengrass#UpdateThingShadow'
-          resources:
-            - '$aws/things/*/shadow/name/model-config'
       aws.greengrass.ipc.mqttproxy:
         com.example.InferenceHandler:mqttproxy:1:
           policyDescription: 'Publish inference results to IoT Core'
@@ -65,6 +55,8 @@ Manifests:
         python3 {artifacts:path}/inference_handler.py'
   Artifacts:
     - Uri: inference_handler.py
+      Unarchive: NONE
+    - Uri: cloud_shadow.py
       Unarchive: NONE
     - Uri: get-pip.py
       Unarchive: NONE

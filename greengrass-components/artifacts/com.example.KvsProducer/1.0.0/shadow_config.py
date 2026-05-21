@@ -1,6 +1,12 @@
 from dataclasses import dataclass, replace
 import json
 import logging
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(__file__))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', '..', 'shared'))
+from cloud_shadow import CloudShadowClient
 
 logger = logging.getLogger(__name__)
 
@@ -26,45 +32,37 @@ DEFAULT_CONFIG = KvsConfig(
 
 class ShadowConfigManager:
     def __init__(self, ipc_client, thing_name: str, shadow_name: str = "kvs-config"):
-        self._client = ipc_client
+        self._ipc_client = ipc_client
         self._thing_name = thing_name
         self._shadow_name = shadow_name
+        self._shadow_client = CloudShadowClient(thing_name, shadow_name)
 
     def read_config(self) -> KvsConfig:
-        try:
-            response = self._client.get_thing_shadow(
-                thing_name=self._thing_name, shadow_name=self._shadow_name
-            )
-            desired = json.loads(response.payload).get("state", {}).get("desired", {})
-            config, errors = self._validate(desired)
-            if errors:
-                logger.warning("Shadow config validation errors: %s", errors)
-            return config
-        except Exception as e:
-            logger.warning("Shadow unavailable, using defaults: %s", e)
+        shadow = self._shadow_client.get_shadow()
+        desired = shadow.get("state", {}).get("desired", {})
+        if not desired:
+            logger.info("No desired state in cloud shadow, using defaults")
             return replace(DEFAULT_CONFIG)
+        config, errors = self._validate(desired)
+        if errors:
+            logger.warning("Shadow config validation errors: %s", errors)
+        return config
 
     def apply_delta(self, delta: dict, current_config: "KvsConfig | None" = None) -> tuple:
         return self._validate(delta, base_config=current_config or DEFAULT_CONFIG)
 
     def report_state(self, config: KvsConfig, status: str) -> None:
-        try:
-            reported = {
-                "stream_name": config.stream_name,
-                "frame_rate": config.frame_rate,
-                "resolution": config.resolution,
-                "streaming_enabled": config.streaming_enabled,
-                "staleness_window_seconds": config.staleness_window_seconds,
-                "snapshot_interval_seconds": config.snapshot_interval_seconds,
-                "streaming_status": status,
-            }
-            self._client.update_thing_shadow(
-                thing_name=self._thing_name,
-                shadow_name=self._shadow_name,
-                payload=json.dumps({"state": {"reported": reported}}).encode(),
-            )
-        except Exception as e:
-            logger.warning("Failed to update shadow reported state: %s", e)
+        reported = {
+            "stream_name": config.stream_name,
+            "frame_rate": config.frame_rate,
+            "resolution": config.resolution,
+            "streaming_enabled": config.streaming_enabled,
+            "staleness_window_seconds": config.staleness_window_seconds,
+            "snapshot_interval_seconds": config.snapshot_interval_seconds,
+            "streaming_status": status,
+        }
+        if not self._shadow_client.update_reported(reported):
+            logger.warning("Failed to update shadow reported state")
 
     def _validate(self, data: dict, base_config: "KvsConfig | None" = None) -> tuple:
         if base_config is None:

@@ -11,9 +11,6 @@ ComponentDependencies:
   com.example.DetectionHandler:
     VersionRequirement: '^1.0.0'
     DependencyType: SOFT
-  aws.greengrass.ShadowManager:
-    VersionRequirement: '^2.0.0'
-    DependencyType: HARD
   aws.greengrass.TokenExchangeService:
     VersionRequirement: '^2.0.0'
     DependencyType: HARD
@@ -37,14 +34,6 @@ ComponentConfiguration:
     # target (e.g. $SNAP_DATA/gstreamer-kvs = /var/snap/aws-iot-greengrass/current/gstreamer-kvs).
     GstKvsMount: "/var/snap/aws-iot-greengrass/common/gstreamer-kvs"
     accessControl:
-      aws.greengrass.ShadowManager:
-        com.example.KvsProducer:shadow:1:
-          policyDescription: 'Read and write the kvs-config named shadow'
-          operations:
-            - 'aws.greengrass#GetThingShadow'
-            - 'aws.greengrass#UpdateThingShadow'
-          resources:
-            - '$aws/things/*/shadow/name/kvs-config'
       aws.greengrass.ipc.pubsub:
         com.example.KvsProducer:pubsub:1:
           policyDescription: 'Publish inference snapshot paths to camera/images'
@@ -135,6 +124,8 @@ Manifests:
       - Uri: gstreamer_pipeline.py
         Unarchive: NONE
       - Uri: shadow_config.py
+        Unarchive: NONE
+      - Uri: cloud_shadow.py
         Unarchive: NONE
       - Uri: health_monitor.py
         Unarchive: NONE

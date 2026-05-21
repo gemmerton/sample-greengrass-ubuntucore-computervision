@@ -306,11 +306,8 @@ class GreengrassDeployer:
                 }
             component_config[component['componentName']] = entry
 
-        # Include AWS-managed system components required by KvsProducer and ModelManagerCore.
-        # These are public components — we resolve the latest available version rather than
-        # hardcoding, so the deployment stays current without manual version bumps.
+        # Include AWS-managed system components required for credential vending.
         system_components = [
-            'aws.greengrass.ShadowManager',
             'aws.greengrass.TokenExchangeService',
         ]
         for name in system_components:
@@ -321,29 +318,6 @@ class GreengrassDeployer:
                     print(f"Including system component {name} v{version}")
                 else:
                     print(f"Warning: skipping {name} — could not resolve version")
-
-        # Configure ShadowManager to sync named shadows used by KvsProducer and
-        # ModelManagerCore from IoT Core to the local shadow store. Without this,
-        # GetThingShadow IPC calls return ResourceNotFoundError for shadows that
-        # were created via the console or cloud-side APIs.
-        if 'aws.greengrass.ShadowManager' in component_config:
-            import json as _json
-            sync_config = _json.dumps({
-                "strategy": {
-                    "type": "realTime"
-                },
-                "synchronize": {
-                    "coreThing": {
-                        "classic": True,
-                        "namedShadows": ["kvs-config", "model-config"]
-                    },
-                    "direction": "betweenDeviceAndCloud"
-                }
-            })
-            component_config['aws.greengrass.ShadowManager']['configurationUpdate'] = {
-                'merge': sync_config
-            }
-            print("Configured ShadowManager: realTime bidirectional sync for named shadows")
 
         try:
             response = self.greengrass_client.create_deployment(

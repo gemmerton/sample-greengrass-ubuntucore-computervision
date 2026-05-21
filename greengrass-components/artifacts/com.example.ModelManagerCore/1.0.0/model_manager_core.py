@@ -26,6 +26,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', '..', 'sh
 
 from ovms_config import write_model_config, write_multi_model_config, read_model_config, get_active_model_from_config
 from snapd_client import SnapdClient, SnapdError
+from cloud_shadow import CloudShadowClient
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -60,8 +61,11 @@ class ModelManagerCore:
         # Initialize snapd client for snap management via REST API
         self.snapd = SnapdClient()
 
-        # Initialize Greengrass IPC client
+        # Initialize Greengrass IPC client (for MQTT subscriptions/publishing)
         self.ipc_client = clientv2.GreengrassCoreIPCClientV2()
+
+        # Cloud shadow client for direct IoT Data Plane access
+        self.shadow_client = CloudShadowClient(self.thing_name, SHADOW_NAME)
 
         logger.info(
             "ModelManagerCore initialized: thing_name=%s, snap_components=%s, snap_common=%s",
@@ -88,22 +92,13 @@ class ModelManagerCore:
             logger.warning("AWS_IOT_THING_NAME not set, cannot read shadow")
             return
 
-        try:
-            response = self.ipc_client.get_thing_shadow(
-                thing_name=self.thing_name, shadow_name=SHADOW_NAME
-            )
-            shadow = json.loads(response.payload)
-            reported = shadow.get("state", {}).get("reported", {})
-            self.reported_models = reported.get("models", {})
-            logger.info(
-                "Loaded current reported models: %s",
-                list(self.reported_models.keys()),
-            )
-        except Exception as e:
-            logger.info(
-                "No existing model-config shadow found, starting fresh: %s", e
-            )
-            self.reported_models = {}
+        shadow = self.shadow_client.get_shadow()
+        reported = shadow.get("state", {}).get("reported", {})
+        self.reported_models = reported.get("models", {})
+        logger.info(
+            "Loaded current reported models: %s",
+            list(self.reported_models.keys()),
+        )
 
     def _subscribe_to_shadow_delta(self):
         """Subscribe to the model-config named shadow delta via IoT Core MQTT."""
@@ -658,13 +653,9 @@ class ModelManagerCore:
         model_id = model_id.strip()
 
         # Read current shadow to check inventory and current active model
-        try:
-            response = self.ipc_client.get_thing_shadow(
-                thing_name=self.thing_name, shadow_name=SHADOW_NAME
-            )
-            shadow = json.loads(response.payload)
-        except Exception as e:
-            logger.error("Cannot process active_model - shadow unavailable: %s", e)
+        shadow = self.shadow_client.get_shadow()
+        if not shadow:
+            logger.error("Cannot process active_model - shadow unavailable")
             self._clear_desired_field('active_model')
             return
 
@@ -1033,41 +1024,19 @@ class ModelManagerCore:
         """Clear a processed desired state field by setting it to null."""
         if not self.thing_name:
             return
-        try:
-            payload = json.dumps({
-                "state": {
-                    "desired": {
-                        field_name: None
-                    }
-                }
-            }).encode('utf-8')
-            self.ipc_client.update_thing_shadow(
-                thing_name=self.thing_name,
-                shadow_name=SHADOW_NAME,
-                payload=payload,
-            )
+        if self.shadow_client.update_desired({field_name: None}):
             logger.info("Cleared desired state field: %s", field_name)
-        except Exception as e:
-            logger.error("Failed to clear desired field '%s': %s", field_name, e)
+        else:
+            logger.error("Failed to clear desired field '%s'", field_name)
 
     def _update_shadow_reported_state(self, reported_state):
         """Update the model-config shadow reported state."""
         if not self.thing_name:
             return
-        try:
-            payload = json.dumps({
-                "state": {
-                    "reported": reported_state
-                }
-            }).encode('utf-8')
-            self.ipc_client.update_thing_shadow(
-                thing_name=self.thing_name,
-                shadow_name=SHADOW_NAME,
-                payload=payload,
-            )
+        if self.shadow_client.update_reported(reported_state):
             logger.info("Shadow reported state updated")
-        except Exception as e:
-            logger.error("Failed to update shadow reported state: %s", e)
+        else:
+            logger.error("Failed to update shadow reported state")
 
     def _publish_error_event(self, operation, model_id, error_code, error_message):
         """Publish a structured error event to model-manager/{thingName}/errors.
@@ -1236,23 +1205,14 @@ class ModelManagerCore:
             logger.warning("Cannot update shadow: AWS_IOT_THING_NAME not set")
             return
 
-        try:
-            reported_state = {"models": self.reported_models}
-            payload = json.dumps({"state": {"reported": reported_state}}).encode(
-                "utf-8"
-            )
-            self.ipc_client.update_thing_shadow(
-                thing_name=self.thing_name,
-                shadow_name=SHADOW_NAME,
-                payload=payload,
-            )
+        reported_state = {"models": self.reported_models}
+        if self.shadow_client.update_reported(reported_state):
             logger.info(
                 "Shadow reported state updated: %s",
                 json.dumps(reported_state, indent=2),
             )
-        except Exception as e:
-            logger.error("Failed to update shadow reported state: %s", e)
-            traceback.print_exc()
+        else:
+            logger.error("Failed to update shadow reported state")
 
     def _on_stream_error(self, error):
         """Handle stream errors from IPC subscriptions."""

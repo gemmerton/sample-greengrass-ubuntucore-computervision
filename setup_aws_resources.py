@@ -199,7 +199,26 @@ class AWSResourcesSetup:
                     PolicyName='S3PutObjectPolicy',
                     PolicyDocument=json.dumps(put_policy)
                 )
-            
+
+            shadow_policy = {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Action": [
+                            "iot:GetThingShadow",
+                            "iot:UpdateThingShadow"
+                        ],
+                        "Resource": f"arn:aws:iot:{self.aws_region}:{self.account_id}:thing/*"
+                    }
+                ]
+            }
+            self.iam.put_role_policy(
+                RoleName=role_name,
+                PolicyName='IoTShadowAccessPolicy',
+                PolicyDocument=json.dumps(shadow_policy)
+            )
+
             role_arn = f"arn:aws:iam::{self.account_id}:role/{role_name}"
             print(f"Created Greengrass Token Exchange Role: {role_arn}")
             return role_arn
@@ -233,7 +252,26 @@ class AWSResourcesSetup:
                         PolicyName='S3PutObjectPolicy',
                         PolicyDocument=json.dumps(put_policy)
                     )
-                
+
+                shadow_policy = {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Action": [
+                                "iot:GetThingShadow",
+                                "iot:UpdateThingShadow"
+                            ],
+                            "Resource": f"arn:aws:iot:{self.aws_region}:{self.account_id}:thing/*"
+                        }
+                    ]
+                }
+                self.iam.put_role_policy(
+                    RoleName=role_name,
+                    PolicyName='IoTShadowAccessPolicy',
+                    PolicyDocument=json.dumps(shadow_policy)
+                )
+
                 return role_arn
             else:
                 raise

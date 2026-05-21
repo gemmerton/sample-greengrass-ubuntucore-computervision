@@ -1,7 +1,7 @@
 """InferenceHandler - Unified shadow-reactive inference for edge computer vision.
 
 Captures frames from the camera at a configurable interval, reads active model
-metadata from the model-config local shadow, calls OVMS gRPC for inference,
+metadata from the model-config cloud shadow, calls OVMS gRPC for inference,
 and publishes results to camera/inference via IoT Core MQTT.
 """
 
@@ -16,6 +16,10 @@ import cv2
 import numpy as np
 from ovmsclient import make_grpc_client
 import awsiot.greengrasscoreipc.clientv2 as clientv2
+
+sys.path.insert(0, os.path.dirname(__file__))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', '..', 'shared'))
+from cloud_shadow import CloudShadowClient
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -34,6 +38,7 @@ class InferenceHandler:
         self.pub_topic = os.environ.get("PUB_TOPIC", "camera/inference")
 
         self.ipc_client = clientv2.GreengrassCoreIPCClientV2()
+        self.shadow_client = CloudShadowClient(self.thing_name, SHADOW_NAME)
         self.model_metadata = None
         self.active_model_id = None
 
@@ -94,68 +99,41 @@ class InferenceHandler:
     def _switch_to_model(self, model_id):
         """Handle an explicit model switch request from shadow delta.
 
-        Reads model metadata from reported state, switches, reports back,
-        and clears desired.active_model to prevent delta feedback loops.
+        Reads model metadata from reported state, switches, reports back.
         """
         if not self.thing_name or not model_id:
             return
         if model_id == self.active_model_id:
             self._report_and_clear_desired()
             return
-        try:
-            response = self.ipc_client.get_thing_shadow(
-                thing_name=self.thing_name, shadow_name=SHADOW_NAME
-            )
-            shadow = json.loads(response.payload)
-            reported = shadow.get("state", {}).get("reported", {})
-            models = reported.get("models", {})
-            if model_id not in models:
-                logger.warning("Model '%s' not in reported models, cannot switch", model_id)
-                return
-            entry = models[model_id]
-            if entry.get("status") != "ready":
-                logger.warning("Model '%s' not ready (status=%s), cannot switch", model_id, entry.get("status"))
-                return
-            metadata = entry.get("model_metadata", {})
-            logger.info("Active model changed: %s -> %s", self.active_model_id, model_id)
-            self.active_model_id = model_id
-            self.model_metadata = metadata
-            self._report_and_clear_desired()
-        except Exception as e:
-            logger.error("Failed to switch to model '%s': %s", model_id, e)
+        shadow = self.shadow_client.get_shadow()
+        reported = shadow.get("state", {}).get("reported", {})
+        models = reported.get("models", {})
+        if model_id not in models:
+            logger.warning("Model '%s' not in reported models, cannot switch", model_id)
+            return
+        entry = models[model_id]
+        if entry.get("status") != "ready":
+            logger.warning("Model '%s' not ready (status=%s), cannot switch", model_id, entry.get("status"))
+            return
+        metadata = entry.get("model_metadata", {})
+        logger.info("Active model changed: %s -> %s", self.active_model_id, model_id)
+        self.active_model_id = model_id
+        self.model_metadata = metadata
+        self._report_and_clear_desired()
 
     def _report_and_clear_desired(self):
-        """Report active_model to shadow reported state.
+        """Report active_model to cloud shadow reported state.
 
-        Only updates reported.active_model. Does NOT clear desired — that
-        creates version conflicts when the React app writes desired via the
-        cloud API concurrently. Once reported matches desired, the delta
-        resolves naturally without explicit clearing.
-
-        Retries on failure since ShadowManager may not be ready immediately
-        after startup.
+        Only updates reported.active_model. Does NOT clear desired — once
+        reported matches desired, the delta resolves naturally.
         """
         if not self.thing_name or not self.active_model_id:
             return
-        payload = json.dumps({
-            "state": {
-                "reported": {"active_model": self.active_model_id},
-            }
-        }).encode("utf-8")
-        for attempt in range(3):
-            try:
-                self.ipc_client.update_thing_shadow(
-                    thing_name=self.thing_name,
-                    shadow_name=SHADOW_NAME,
-                    payload=payload,
-                )
-                logger.info("Reported active_model=%s", self.active_model_id)
-                return
-            except Exception as e:
-                if attempt < 2:
-                    time.sleep(2)
-                else:
-                    logger.warning("Failed to report active_model after 3 attempts: %s", e)
+        if self.shadow_client.update_reported({"active_model": self.active_model_id}):
+            logger.info("Reported active_model=%s", self.active_model_id)
+        else:
+            logger.warning("Failed to report active_model=%s", self.active_model_id)
 
     def _load_active_model(self):
         """Determine which model to use on startup or when polling.
@@ -169,67 +147,59 @@ class InferenceHandler:
         """
         if not self.thing_name:
             return
-        try:
-            response = self.ipc_client.get_thing_shadow(
-                thing_name=self.thing_name, shadow_name=SHADOW_NAME
+        shadow = self.shadow_client.get_shadow()
+        reported = shadow.get("state", {}).get("reported", {})
+        desired = shadow.get("state", {}).get("desired", {})
+
+        models = reported.get("models", {})
+        if not models:
+            logger.info("No models in reported state")
+            self.model_metadata = None
+            self.active_model_id = None
+            return
+
+        # Determine target model using priority chain
+        target_model_id = None
+
+        # Priority 1: desired.active_model (explicit user request)
+        desired_model = desired.get("active_model")
+        if desired_model and desired_model in models:
+            target_model_id = desired_model
+
+        # Priority 2: reported.active_model (persisted truth from last run)
+        if not target_model_id:
+            reported_model = reported.get("active_model")
+            if reported_model and reported_model in models:
+                target_model_id = reported_model
+
+        # Priority 3: first ready model (cold start)
+        if not target_model_id:
+            target_model_id = next(
+                (mid for mid, m in models.items() if m.get("status") == "ready"),
+                None,
             )
-            shadow = json.loads(response.payload)
-            reported = shadow.get("state", {}).get("reported", {})
-            desired = shadow.get("state", {}).get("desired", {})
 
-            models = reported.get("models", {})
-            if not models:
-                logger.info("No models in reported state")
-                self.model_metadata = None
-                self.active_model_id = None
-                return
+        if not target_model_id:
+            self.model_metadata = None
+            self.active_model_id = None
+            return
 
-            # Determine target model using priority chain
-            target_model_id = None
+        entry = models[target_model_id]
+        if entry.get("status") != "ready":
+            logger.info("Model '%s' not ready (status=%s)", target_model_id, entry.get("status"))
+            self.model_metadata = None
+            self.active_model_id = None
+            return
 
-            # Priority 1: desired.active_model (explicit user request)
-            desired_model = desired.get("active_model")
-            if desired_model and desired_model in models:
-                target_model_id = desired_model
-
-            # Priority 2: reported.active_model (persisted truth from last run)
-            if not target_model_id:
-                reported_model = reported.get("active_model")
-                if reported_model and reported_model in models:
-                    target_model_id = reported_model
-
-            # Priority 3: first ready model (cold start)
-            if not target_model_id:
-                target_model_id = next(
-                    (mid for mid, m in models.items() if m.get("status") == "ready"),
-                    None,
-                )
-
-            if not target_model_id:
-                self.model_metadata = None
-                self.active_model_id = None
-                return
-
-            entry = models[target_model_id]
-            if entry.get("status") != "ready":
-                logger.info("Model '%s' not ready (status=%s)", target_model_id, entry.get("status"))
-                self.model_metadata = None
-                self.active_model_id = None
-                return
-
-            metadata = entry.get("model_metadata", {})
-            if self.active_model_id != target_model_id:
-                logger.info("Active model changed: %s -> %s", self.active_model_id, target_model_id)
-                self.active_model_id = target_model_id
-                self.model_metadata = metadata
-                logger.info("Model metadata: %s", json.dumps(metadata, indent=2))
-                self._report_active_model()
-            elif self.model_metadata is None:
-                # Same model but metadata not loaded (first run)
-                self.model_metadata = metadata
-        except Exception as e:
-            logger.error("Failed to load active model from shadow: %s", e)
-            traceback.print_exc()
+        metadata = entry.get("model_metadata", {})
+        if self.active_model_id != target_model_id:
+            logger.info("Active model changed: %s -> %s", self.active_model_id, target_model_id)
+            self.active_model_id = target_model_id
+            self.model_metadata = metadata
+            logger.info("Model metadata: %s", json.dumps(metadata, indent=2))
+            self._report_active_model()
+        elif self.model_metadata is None:
+            self.model_metadata = metadata
 
     def _report_active_model(self):
         self._report_and_clear_desired()
