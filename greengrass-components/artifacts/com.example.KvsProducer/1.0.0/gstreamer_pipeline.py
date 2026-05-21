@@ -198,7 +198,7 @@ class EncodingPipeline:
         Gst.init(None)
         print("EncodingPipeline.start: Gst.init() done", file=sys.stderr, flush=True)
         # do-timestamp=true: auto-assigns PTS to every pushed buffer (required by kvssink)
-        # key-int-max: forces a keyframe every 2s so the player can start mid-stream
+        # key-int-max: forces a keyframe every 1s for shorter HLS fragments / lower latency
         # config-interval=-1: repeats SPS/PPS before every keyframe for player init
         # video/x-raw,format=I420: prevents x264enc choosing Hi444PP (profile_idc=244)
         #   which KVS rejects; forces Baseline/Main/High-compatible YUV 4:2:0
@@ -207,7 +207,7 @@ class EncodingPipeline:
             f"appsrc name=src format=time is-live=true do-timestamp=true "
             f"caps=video/x-raw,format=BGR,width={self._width},"
             f"height={self._height},framerate={self._framerate}/1 "
-            f"! videoconvert ! video/x-raw,format=I420 ! x264enc tune=zerolatency key-int-max={self._framerate * 2} "
+            f"! videoconvert ! video/x-raw,format=I420 ! x264enc tune=zerolatency key-int-max={self._framerate} "
             f"! h264parse config-interval=-1 "
             f"! kvssink stream-name={self._stream_name} "
             f"aws-region={self._region} "

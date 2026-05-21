@@ -42,7 +42,7 @@ export async function getHlsStreamingUrl(
     StreamName: config.streamName,
     PlaybackMode: HLSPlaybackMode.LIVE,
     HLSFragmentSelector: {
-      FragmentSelectorType: HLSFragmentSelectorType.SERVER_TIMESTAMP,
+      FragmentSelectorType: HLSFragmentSelectorType.PRODUCER_TIMESTAMP,
     },
     ContainerFormat: ContainerFormat.FRAGMENTED_MP4,
     DiscontinuityMode: HLSDiscontinuityMode.ALWAYS,

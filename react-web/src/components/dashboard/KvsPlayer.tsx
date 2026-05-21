@@ -48,7 +48,13 @@ export const KvsPlayer: React.FC<KvsPlayerProps> = ({
             () => loadStreamRef.current?.(), msUntilRefresh);
         }
         if (hlsRef.current) { hlsRef.current.destroy(); }
-        const hls = new Hls();
+        const hls = new Hls({
+          liveSyncDurationCount: 1,
+          liveMaxLatencyDurationCount: 3,
+          lowLatencyMode: true,
+          maxBufferLength: 2,
+          maxMaxBufferLength: 5,
+        });
         hlsRef.current = hls;
         hls.loadSource(url);
         if (videoRef.current) { hls.attachMedia(videoRef.current); }
