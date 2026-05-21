@@ -1,17 +1,11 @@
 .edge-latency {
-  background: rgba(0, 0, 0, 0.75);
-  border-radius: 6px;
-  padding: 8px 12px;
-  position: absolute;
-  bottom: 10px;
-  left: 10px;
   display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 0.75rem;
+  align-items: center;
+  gap: 16px;
+  justify-content: flex-end;
+  padding: 8px 0;
+  font-size: 0.9rem;
   color: #eee;
-  pointer-events: none;
-  z-index: 10;
 }
 
 .edge-latency__row {
@@ -40,12 +34,9 @@
 }
 
 .edge-latency__advantage {
-  margin-top: 2px;
-  padding-top: 4px;
-  border-top: 1px solid rgba(255, 255, 255, 0.15);
   color: #22c55e;
   font-weight: 600;
-  font-size: 0.7rem;
+  font-size: 0.9rem;
   letter-spacing: 0.3px;
   display: flex;
   align-items: center;

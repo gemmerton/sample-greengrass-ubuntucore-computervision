@@ -94,6 +94,7 @@ const DashboardContent: React.FC<DashboardProps> = ({
 
           {credentials && (
             <>
+              <EdgeLatencyIndicator latestResult={latestResult} videoElement={videoElement} />
               <section className="dashboard__content" aria-label="Live video and analysis">
                 <article className="dashboard__card dashboard__card--video" style={{ position: 'relative' }}>
                   <KvsPlayer
@@ -103,7 +104,6 @@ const DashboardContent: React.FC<DashboardProps> = ({
                     onVideoReady={setVideoElement}
                   />
                   <InferenceOverlay result={latestResult} videoElement={videoElement} vlmRiskLevel={vlmLatestResult?.response?.risk_level ?? null} />
-                  <EdgeLatencyIndicator latestResult={latestResult} videoElement={videoElement} />
                 </article>
                 <aside className="dashboard__vlm-panel" aria-label="VLM Risk Assessment">
                   <VlmPanel latestResult={vlmLatestResult} />
