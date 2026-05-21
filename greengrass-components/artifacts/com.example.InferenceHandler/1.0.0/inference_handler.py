@@ -338,6 +338,9 @@ class InferenceHandler:
                 },
             })
 
+        if not detections:
+            return None
+
         return {
             "timestamp": time.time(),
             "model_id": self.active_model_id,
@@ -373,6 +376,9 @@ class InferenceHandler:
                 "confidence": round(conf, 4),
                 "class_index": int(idx),
             })
+
+        if not classifications:
+            return None
 
         return {
             "timestamp": time.time(),
