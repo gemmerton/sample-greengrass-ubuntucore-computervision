@@ -27,7 +27,7 @@ DEFAULT_CONFIG = KvsConfig(
     resolution="640x480",
     streaming_enabled=True,
     staleness_window_seconds=30.0,
-    snapshot_interval_seconds=10,
+    snapshot_interval_seconds=1,
 )
 
 class ShadowConfigManager:
