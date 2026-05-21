@@ -5,6 +5,7 @@
 
 import React, { useCallback, useState } from 'react';
 import { InferenceOverlay } from './InferenceOverlay';
+import { EdgeLatencyIndicator } from './EdgeLatencyIndicator';
 import { VlmPanel } from './VlmPanel';
 import { VlmTimeline } from './VlmTimeline';
 import { VlmPromptEditor } from '../controls/VlmPromptEditor';
@@ -102,6 +103,7 @@ const DashboardContent: React.FC<DashboardProps> = ({
                     onVideoReady={setVideoElement}
                   />
                   <InferenceOverlay result={latestResult} videoElement={videoElement} vlmRiskLevel={vlmLatestResult?.response?.risk_level ?? null} />
+                  <EdgeLatencyIndicator latestResult={latestResult} videoElement={videoElement} />
                 </article>
                 <aside className="dashboard__vlm-panel" aria-label="VLM Risk Assessment">
                   <VlmPanel latestResult={vlmLatestResult} />

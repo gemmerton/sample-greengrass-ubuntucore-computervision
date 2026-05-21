@@ -1,0 +1,50 @@
+.edge-latency {
+  background: rgba(0, 0, 0, 0.75);
+  border-radius: 6px;
+  padding: 8px 12px;
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.75rem;
+  color: #eee;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.edge-latency__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.edge-latency__row svg {
+  stroke: #22c55e;
+  flex-shrink: 0;
+}
+
+.edge-latency__row:nth-child(2) svg {
+  stroke: #6b7280;
+}
+
+.edge-latency__label {
+  color: var(--text-muted, #999);
+  min-width: 90px;
+}
+
+.edge-latency__time {
+  font-family: monospace;
+  color: #fff;
+}
+
+.edge-latency__advantage {
+  margin-top: 2px;
+  padding-top: 4px;
+  border-top: 1px solid rgba(255, 255, 255, 0.15);
+  color: #22c55e;
+  font-weight: 600;
+  font-size: 0.7rem;
+  letter-spacing: 0.3px;
+}
