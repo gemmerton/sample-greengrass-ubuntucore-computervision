@@ -174,26 +174,23 @@ class GreengrassDeployer:
         except ClientError as e:
             print(f"Error listing deployments: {e}")
 
-    def create_component(self, recipe_file, force_recreate=False):
+    def create_component(self, recipe_file):
         """Create a Greengrass component from a recipe file.
-        
-        On version conflict: auto-increments the patch version to avoid cache
-        issues on the device. Use --force to delete and recreate the same version instead.
+
+        Auto-increments the patch version on each deploy so the device always
+        picks up new artifacts and the console shows version progression.
         """
         with open(recipe_file, 'r', encoding='utf-8') as f:
             recipe_data = yaml.safe_load(f)
 
         component_name = recipe_data['ComponentName']
         base_version = recipe_data['ComponentVersion']
-        
-        # Determine the version to use
-        if force_recreate:
-            component_version = base_version
-        else:
-            component_version = self.get_next_version(component_name, base_version)
-            if component_version != base_version:
-                print(f"Version {base_version} already exists, auto-incrementing to {component_version}")
-                recipe_data['ComponentVersion'] = component_version
+
+        # Always auto-increment patch version to ensure the device picks up new artifacts
+        component_version = self.get_next_version(component_name, base_version)
+        if component_version != base_version:
+            print(f"Auto-incrementing version: {base_version} -> {component_version}")
+        recipe_data['ComponentVersion'] = component_version
 
         print(f"Processing component: {component_name} v{component_version}")
 
@@ -232,41 +229,25 @@ class GreengrassDeployer:
             }
         except ClientError as e:
             if e.response['Error']['Code'] == 'ConflictException':
-                if force_recreate:
-                    print(f"Component exists, attempting to delete and recreate...")
-                    if self.delete_component_version(component_name, component_version):
-                        # Retry creation
-                        response = self.greengrass_client.create_component_version(
-                            inlineRecipe=yaml.dump(recipe_data).encode('utf-8')
-                        )
-                        print(f"Recreated component: {component_name} v{component_version}")
-                        return {
-                            'componentName': component_name,
-                            'componentVersion': component_version,
-                            'arn': response['arn'],
-                            'defaultConfig': default_config,
-                        }
-                else:
-                    # This shouldn't happen since we auto-incremented, but handle gracefully
-                    print(f"Component {component_name} v{component_version} conflict (unexpected)")
-                    return {
-                        'componentName': component_name,
-                        'componentVersion': component_version,
-                        'arn': f"arn:aws:greengrass:{self.aws_region}:{self.account_id}:components:{component_name}:versions:{component_version}",
-                        'defaultConfig': default_config,
-                    }
+                print(f"Component {component_name} v{component_version} already exists (unexpected)")
+                return {
+                    'componentName': component_name,
+                    'componentVersion': component_version,
+                    'arn': f"arn:aws:greengrass:{self.aws_region}:{self.account_id}:components:{component_name}:versions:{component_version}",
+                    'defaultConfig': default_config,
+                }
             else:
                 print(f"Failed to create component {component_name}: {e}")
                 raise
 
-    def create_all_components(self, force_recreate=False):
+    def create_all_components(self):
         """Create all components from recipe files."""
         components = []
-        
+
         for recipe_file in self.recipes_dir.glob('*.yaml'):
-            component = self.create_component(recipe_file, force_recreate)
+            component = self.create_component(recipe_file)
             components.append(component)
-        
+
         return components
 
     def _get_latest_public_component_version(self, component_name):
@@ -341,17 +322,17 @@ class GreengrassDeployer:
             print(f"Failed to create deployment: {e}")
             raise
 
-    def create_components_only(self, force_recreate=False):
+    def create_components_only(self):
         """Create components without deployment."""
         print(f"Creating Greengrass components...")
         print(f"Using S3 bucket: {self.s3_bucket}")
         print(f"AWS Region: {self.aws_region}")
-        
+
         # Validate structure
         self.validate_structure()
-        
+
         # Create all components
-        components = self.create_all_components(force_recreate)
+        components = self.create_all_components()
         
         print(f"\nComponents created successfully!")
         print(f"Total components: {len(components)}")
@@ -434,17 +415,17 @@ class GreengrassDeployer:
         matching.sort(key=lambda v: int(v.split('.')[2]), reverse=True)
         return matching[0]
 
-    def deploy_full(self, thing_name, force_recreate=False):
+    def deploy_full(self, thing_name):
         """Full deployment: create components and deploy to thing."""
         print(f"Starting full deployment to IoT Thing: {thing_name}")
         print(f"Using S3 bucket: {self.s3_bucket}")
         print(f"AWS Region: {self.aws_region}")
-        
+
         # Validate structure
         self.validate_structure()
-        
+
         # Create all components
-        components = self.create_all_components(force_recreate)
+        components = self.create_all_components()
         
         # Create deployment
         deployment_id = self.create_deployment(thing_name, components)
@@ -470,8 +451,6 @@ def main():
     parser.add_argument('--thing-name', help='IoT Thing name')
     parser.add_argument('--s3-bucket', help='S3 bucket for storing artifacts')
     parser.add_argument('--region', help='AWS region')
-    parser.add_argument('--force', action='store_true', help='Force recreate components if they already exist')
-    
     args = parser.parse_args()
     
     # Get stage if not provided
@@ -508,11 +487,11 @@ def main():
         deployer = GreengrassDeployer(s3_bucket or 'dummy', region)
         
         if stage == 'create':
-            deployer.create_components_only(args.force)
+            deployer.create_components_only()
         elif stage == 'deploy':
             deployer.deploy_to_thing(thing_name)
         elif stage == 'full':
-            deployer.deploy_full(thing_name, args.force)
+            deployer.deploy_full(thing_name)
         elif stage == 'setup':
             setup = AWSResourcesSetup(region, 'ubuntu-core-gg-demo')
             setup.setup_all(s3_bucket)
