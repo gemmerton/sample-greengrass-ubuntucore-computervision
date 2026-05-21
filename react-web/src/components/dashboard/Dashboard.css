@@ -138,8 +138,19 @@
 /* ─── Content Grid ───────────────────────────────────────────────────── */
 
 .dashboard__content {
-  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 16px;
+  align-items: stretch;
   width: 100%;
+}
+
+.dashboard__vlm-panel {
+  min-height: 300px;
+}
+
+.dashboard__timeline {
+  margin-top: 16px;
 }
 
 .dashboard__grid {
@@ -495,6 +506,10 @@
 @media (max-width: 1024px) {
   .dashboard__grid {
     gap: var(--spacing-md);
+  }
+
+  .dashboard__content {
+    grid-template-columns: 1fr;
   }
 }
 

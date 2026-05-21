@@ -5,8 +5,11 @@
 
 import React, { useCallback, useState } from 'react';
 import { InferenceOverlay } from './InferenceOverlay';
-import { InferencePanel } from './InferencePanel';
+import { VlmPanel } from './VlmPanel';
+import { VlmTimeline } from './VlmTimeline';
+import { VlmPromptEditor } from '../controls/VlmPromptEditor';
 import { useInferenceResults } from '../../hooks/useInferenceResults';
+import { useVlmResults } from '../../hooks/useVlmResults';
 import { Header } from './Header';
 // import { ImageGallery } from './ImageGallery';  // S3 features temporarily hidden
 import { MessageFeed } from './MessageFeed';
@@ -41,7 +44,8 @@ const DashboardContent: React.FC<DashboardProps> = ({
   const [settingsOpen, setSettingsOpen] = useState<boolean>(false);
   const [messagePanelOpen, setMessagePanelOpen] = useState<boolean>(false);
   const [videoElement, setVideoElement] = useState<HTMLVideoElement | null>(null);
-  const { latestResult, history } = useInferenceResults();
+  const { latestResult } = useInferenceResults();
+  const { latestResult: vlmLatestResult, history: vlmHistory } = useVlmResults();
 
   /**
    * Handle MQTT topic change
@@ -87,20 +91,26 @@ const DashboardContent: React.FC<DashboardProps> = ({
             </div>
           </div>
 
-          {/* KVS Live Stream - primary content */}
           {credentials && (
-            <section className="dashboard__content" aria-label="Live video stream">
-              <article className="dashboard__card dashboard__card--video" aria-labelledby="video-stream-title" style={{ position: 'relative' }}>
-                <KvsPlayer
-                  streamName={(import.meta as any).env?.VITE_KVS_STREAM_NAME ?? ''}
-                  region={region ?? config.aws.region}
-                  credentials={credentials as unknown as AwsCredentialIdentity}
-                  onVideoReady={setVideoElement}
-                />
-                <InferenceOverlay result={latestResult} videoElement={videoElement} />
-              </article>
-              <InferencePanel latestResult={latestResult} history={history} />
-            </section>
+            <>
+              <section className="dashboard__content" aria-label="Live video and analysis">
+                <article className="dashboard__card dashboard__card--video" style={{ position: 'relative' }}>
+                  <KvsPlayer
+                    streamName={(import.meta as any).env?.VITE_KVS_STREAM_NAME ?? ''}
+                    region={region ?? config.aws.region}
+                    credentials={credentials as unknown as AwsCredentialIdentity}
+                    onVideoReady={setVideoElement}
+                  />
+                  <InferenceOverlay result={latestResult} videoElement={videoElement} vlmRiskLevel={vlmLatestResult?.response?.risk_level ?? null} />
+                </article>
+                <aside className="dashboard__vlm-panel" aria-label="VLM Risk Assessment">
+                  <VlmPanel latestResult={vlmLatestResult} />
+                </aside>
+              </section>
+              <section className="dashboard__timeline" aria-label="Analysis timeline">
+                <VlmTimeline history={vlmHistory} />
+              </section>
+            </>
           )}
 
           {/* Custom children content */}
@@ -168,6 +178,12 @@ const DashboardContent: React.FC<DashboardProps> = ({
               <div className="dashboard__settings-field">
                 <ModelSelector thingName={thingName} />
               </div>
+            </div>
+          </div>
+          <div className="dashboard__settings-section">
+            <h3 className="dashboard__settings-heading">VLM Prompt</h3>
+            <div className="dashboard__settings-stack">
+              <VlmPromptEditor thingName={thingName} />
             </div>
           </div>
         </div>

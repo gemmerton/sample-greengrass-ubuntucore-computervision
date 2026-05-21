@@ -4,6 +4,7 @@ import type { InferenceResult, Detection } from '../../types/inference';
 interface InferenceOverlayProps {
   result: InferenceResult | null;
   videoElement: HTMLVideoElement | null;
+  vlmRiskLevel?: 'HIGH' | 'MEDIUM' | 'LOW' | 'NONE' | null;
 }
 
 const BOX_COLOR = '#00ff88';
@@ -14,6 +15,7 @@ const FONT = '14px monospace';
 export const InferenceOverlay: React.FC<InferenceOverlayProps> = ({
   result,
   videoElement,
+  vlmRiskLevel,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -41,7 +43,26 @@ export const InferenceOverlay: React.FC<InferenceOverlayProps> = ({
         drawClassificationBadge(ctx, classifications[0], canvas.width);
       }
     }
-  }, [result, videoElement]);
+
+    if (vlmRiskLevel) {
+      const badgeColors: Record<string, string> = {
+        HIGH: '#ef4444',
+        MEDIUM: '#f59e0b',
+        LOW: '#22c55e',
+        NONE: '#6b7280',
+      };
+      const color = badgeColors[vlmRiskLevel] ?? '#6b7280';
+      const text = `RISK: ${vlmRiskLevel}`;
+      ctx.font = 'bold 14px monospace';
+      const metrics = ctx.measureText(text);
+      const badgeX = canvas.width - metrics.width - 20;
+      const badgeY = 10;
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+      ctx.fillRect(badgeX - 6, badgeY, metrics.width + 12, 22);
+      ctx.fillStyle = color;
+      ctx.fillText(text, badgeX, badgeY + 16);
+    }
+  }, [result, videoElement, vlmRiskLevel]);
 
   useEffect(() => {
     if (!videoElement) return;
