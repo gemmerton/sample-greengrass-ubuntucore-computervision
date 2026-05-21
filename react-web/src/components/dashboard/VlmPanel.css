@@ -1,0 +1,165 @@
+.vlm-panel {
+  background: var(--card-bg, #1a1a2e);
+  border-radius: 8px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.vlm-panel--empty {
+  justify-content: center;
+  align-items: center;
+}
+
+.vlm-panel__placeholder {
+  text-align: center;
+  color: var(--text-muted, #888);
+}
+
+.vlm-panel__placeholder-icon {
+  font-size: 2rem;
+  display: block;
+  margin-bottom: 8px;
+}
+
+.vlm-panel__placeholder-hint {
+  font-size: 0.8rem;
+  opacity: 0.7;
+}
+
+.vlm-panel__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.vlm-panel__risk-badge {
+  padding: 4px 12px;
+  border-radius: 4px;
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: #fff;
+  letter-spacing: 0.5px;
+}
+
+.vlm-panel__staleness {
+  font-size: 0.75rem;
+  color: var(--text-muted, #888);
+}
+
+.vlm-panel__summary {
+  font-size: 0.95rem;
+  color: var(--text-primary, #eee);
+  line-height: 1.4;
+  margin: 0;
+}
+
+.vlm-panel__risks-toggle {
+  background: none;
+  border: none;
+  color: var(--text-secondary, #aaa);
+  font-size: 0.8rem;
+  cursor: pointer;
+  padding: 0;
+}
+
+.vlm-panel__risks-list {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.vlm-panel__risk-item {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  font-size: 0.85rem;
+}
+
+.vlm-panel__risk-severity {
+  font-weight: 600;
+  font-size: 0.7rem;
+  min-width: 48px;
+}
+
+.vlm-panel__risk-desc {
+  color: var(--text-primary, #eee);
+  flex: 1;
+}
+
+.vlm-panel__risk-category {
+  font-size: 0.7rem;
+  color: var(--text-muted, #888);
+  background: var(--bg-subtle, #2a2a3e);
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+.vlm-panel__raw {
+  font-size: 0.8rem;
+}
+
+.vlm-panel__raw-label {
+  color: var(--text-muted, #888);
+  margin: 0 0 4px 0;
+}
+
+.vlm-panel__raw-output {
+  background: var(--bg-subtle, #2a2a3e);
+  padding: 8px;
+  border-radius: 4px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.75rem;
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+.vlm-panel__footer {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  color: var(--text-muted, #888);
+  border-top: 1px solid var(--border, #333);
+  padding-top: 8px;
+}
+
+.vlm-panel__prompt-section {
+  border-top: 1px solid var(--border, #333);
+  padding-top: 8px;
+}
+
+.vlm-panel__prompt-toggle {
+  background: none;
+  border: none;
+  color: var(--text-secondary, #aaa);
+  font-size: 0.75rem;
+  cursor: pointer;
+  padding: 0;
+}
+
+.vlm-panel__prompt-content {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.vlm-panel__prompt-field label {
+  font-size: 0.7rem;
+  color: var(--text-muted, #888);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.vlm-panel__prompt-field p {
+  margin: 2px 0 0 0;
+  font-size: 0.8rem;
+  color: var(--text-primary, #eee);
+}
