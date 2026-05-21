@@ -225,7 +225,7 @@ const DashboardContent: React.FC<DashboardProps> = ({
 export const Dashboard: React.FC<DashboardProps> = ({ children, className }) => {
   return (
     <S3Provider autoRefreshInterval={30000} maxImages={20}>
-      <MqttProvider autoConnect={false} defaultTopic="camera/inference">
+      <MqttProvider autoConnect={false} defaultTopic="camera/#">
         <DashboardContent children={children} className={className} />
       </MqttProvider>
     </S3Provider>
