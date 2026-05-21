@@ -38,6 +38,10 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
   const [shadowExists, setShadowExists] = useState<boolean>(true);
   const [successMessage, setSuccessMessage] = useState<string>('');
 
+  const [activeVlmModelId, setActiveVlmModelId] = useState<string | null>(null);
+  const [selectedVlmModelId, setSelectedVlmModelId] = useState<string | null>(null);
+  const [vlmSwitchState, setVlmSwitchState] = useState<ModelSwitchState>('idle');
+
   // Ref to track the target model ID during switching (the model we're switching to)
   const targetModelRef = useRef<string | null>(null);
 
@@ -57,6 +61,8 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
           setModels(state.reported_models);
           setActiveModelId(state.reported_active_model);
           setSelectedModelId(state.reported_active_model);
+          setActiveVlmModelId(state.reported_active_vlm_model);
+          setSelectedVlmModelId(state.reported_active_vlm_model);
           setShadowExists(true);
         } else {
           setShadowExists(false);
@@ -182,6 +188,8 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
         setModels(state.reported_models);
         setActiveModelId(state.reported_active_model);
         setSelectedModelId(state.reported_active_model);
+        setActiveVlmModelId(state.reported_active_vlm_model);
+        setSelectedVlmModelId(state.reported_active_vlm_model);
         setShadowExists(true);
       } else {
         setShadowExists(false);
@@ -240,6 +248,22 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
     }
   }, [selectedModelId, activeModelId, credentials, thingName, region, switchState]);
 
+  const handleVlmApply = useCallback(async () => {
+    if (!selectedVlmModelId || !credentials || selectedVlmModelId === activeVlmModelId) return;
+    if (vlmSwitchState !== 'idle') return;
+
+    setVlmSwitchState('updating');
+    try {
+      await iotShadowService.setActiveVlmModel(thingName, credentials, region, selectedVlmModelId);
+      setActiveVlmModelId(selectedVlmModelId);
+      setVlmSwitchState('success');
+      setTimeout(() => setVlmSwitchState('idle'), 3000);
+    } catch (err: any) {
+      setVlmSwitchState('error');
+      setTimeout(() => setVlmSwitchState('idle'), 3000);
+    }
+  }, [selectedVlmModelId, activeVlmModelId, credentials, thingName, region, vlmSwitchState]);
+
   // --- All hooks are above this line. Conditional returns below. ---
 
   // When thingName is empty, display hint message
@@ -262,11 +286,28 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
     selectedModelId !== null &&
     selectedModelId !== activeModelId;
 
+  // Split models into CV and VLM groups
+  const cvModels: ModelInventory = {};
+  const vlmModels: ModelInventory = {};
+  for (const [id, entry] of Object.entries(models)) {
+    if (entry.type === 'vlm') {
+      vlmModels[id] = entry;
+    } else {
+      cvModels[id] = entry;
+    }
+  }
+
   const handleModelClick = (modelId: string, entry: ModelEntry) => {
     if (entry.status !== 'ready') return;
     if (switchState !== 'idle') return;
     setSelectedModelId(modelId);
     setErrorMessage('');
+  };
+
+  const handleVlmModelClick = (modelId: string, entry: ModelEntry) => {
+    if (entry.status !== 'ready') return;
+    if (vlmSwitchState !== 'idle') return;
+    setSelectedVlmModelId(modelId);
   };
 
   const getItemClassName = (modelId: string, entry: ModelEntry): string => {
@@ -305,97 +346,6 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
     );
   };
 
-  const renderModelList = (): React.ReactNode => {
-    // Still loading - show nothing in the list area
-    if (loadState === 'loading') {
-      return (
-        <div className="model-selector__overlay">
-          <div className="model-selector__overlay-spinner" />
-          <span className="model-selector__overlay-text">Loading models...</span>
-        </div>
-      );
-    }
-
-    // Shadow does not exist (null response)
-    if (loadState === 'loaded' && !shadowExists) {
-      return (
-        <p className="model-selector__hint">No model configuration available</p>
-      );
-    }
-
-    // Shadow exists but models map is empty
-    const modelIds = Object.keys(models);
-    if (loadState === 'loaded' && modelIds.length === 0) {
-      return (
-        <p className="model-selector__hint">No models installed on device</p>
-      );
-    }
-
-    // Check if active model references a model not in inventory
-    const activeModelNotInInventory =
-      activeModelId !== null && !models[activeModelId];
-
-    return (
-      <>
-        {activeModelNotInInventory && (
-          <div
-            className="model-selector__item model-selector__item--active model-selector__item--disabled"
-            role="option"
-            aria-selected={false}
-            aria-disabled={true}
-          >
-            <div className="model-selector__item-content">
-              <span className="model-selector__item-name">{activeModelId}</span>
-              <span className="model-selector__not-found">Model not found in inventory</span>
-            </div>
-            <span className="model-selector__active-badge">Active</span>
-          </div>
-        )}
-        {modelIds.map((modelId) => {
-          const entry = models[modelId];
-          const isActive = modelId === activeModelId;
-          const isSelectable = entry.status === 'ready' && switchState === 'idle';
-
-          return (
-            <div
-              key={modelId}
-              className={getItemClassName(modelId, entry)}
-              role="option"
-              aria-selected={modelId === selectedModelId}
-              aria-disabled={!isSelectable}
-              onClick={() => handleModelClick(modelId, entry)}
-              tabIndex={isSelectable ? 0 : -1}
-              onKeyDown={(e) => {
-                if ((e.key === 'Enter' || e.key === ' ') && isSelectable) {
-                  e.preventDefault();
-                  handleModelClick(modelId, entry);
-                }
-              }}
-            >
-              <div className="model-selector__item-content">
-                <span className="model-selector__item-name">
-                  {entry.model_metadata.model_name}
-                </span>
-                <span className="model-selector__item-meta">
-                  {modelId} &middot; v{entry.model_metadata.version}
-                </span>
-                {entry.status === 'failed' && (
-                  <span className="model-selector__item-failure">
-                    {entry.failure_reason || 'Failed'}
-                  </span>
-                )}
-              </div>
-              {renderStatusBadge(entry.status)}
-              {isActive && (
-                <span className="model-selector__active-badge">Active</span>
-              )}
-            </div>
-          );
-        })}
-      </>
-    );
-  };
-
   return (
     <div className={`model-selector ${className}`} role="group" aria-labelledby="model-selector-label">
       <label id="model-selector-label" className="model-selector__label">
@@ -403,28 +353,162 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
       </label>
 
       <div className="model-selector__body">
-        <div className="model-selector__list" role="listbox" aria-label="Available models">
-          {renderModelList()}
-        </div>
-
-        {/* Apply button - enabled only when selection differs from active and state is idle */}
-        <button
-          className={`model-selector__apply-btn ${isApplyEnabled ? 'model-selector__apply-btn--enabled' : ''}`}
-          onClick={isApplyEnabled ? handleApply : undefined}
-          disabled={!isApplyEnabled}
-          aria-label="Apply model selection"
-        >
-          {switchState === 'updating' ? 'Applying...' : 'Apply'}
-        </button>
-
-        {/* Switching overlay shown during updating/switching states */}
-        {(switchState === 'updating' || switchState === 'switching') && (
-          <div className="model-selector__overlay" role="status" aria-live="polite">
+        {/* Loading / empty states (when no groups to show) */}
+        {loadState === 'loading' && (
+          <div className="model-selector__overlay">
             <div className="model-selector__overlay-spinner" />
-            <span className="model-selector__overlay-text">
-              {switchState === 'updating' ? 'Updating shadow...' : 'Waiting for device to switch model...'}
-            </span>
+            <span className="model-selector__overlay-text">Loading models...</span>
           </div>
+        )}
+        {loadState === 'loaded' && !shadowExists && (
+          <p className="model-selector__hint">No model configuration available</p>
+        )}
+        {loadState === 'loaded' && shadowExists && Object.keys(models).length === 0 && (
+          <p className="model-selector__hint">No models installed on device</p>
+        )}
+
+        {/* CV Model group */}
+        {loadState === 'loaded' && Object.keys(cvModels).length > 0 && (
+          <>
+            <h4 className="model-selector__group-label">CV Model</h4>
+            <div className="model-selector__list" role="listbox" aria-label="CV models">
+              {/* Show active CV model not in inventory */}
+              {activeModelId !== null && !models[activeModelId] && (
+                <div
+                  className="model-selector__item model-selector__item--active model-selector__item--disabled"
+                  role="option"
+                  aria-selected={false}
+                  aria-disabled={true}
+                >
+                  <div className="model-selector__item-content">
+                    <span className="model-selector__item-name">{activeModelId}</span>
+                    <span className="model-selector__not-found">Model not found in inventory</span>
+                  </div>
+                  <span className="model-selector__active-badge">Active</span>
+                </div>
+              )}
+              {Object.entries(cvModels).map(([modelId, entry]) => {
+                const isActive = modelId === activeModelId;
+                const isSelectable = entry.status === 'ready' && switchState === 'idle';
+                return (
+                  <div
+                    key={modelId}
+                    className={getItemClassName(modelId, entry)}
+                    role="option"
+                    aria-selected={modelId === selectedModelId}
+                    aria-disabled={!isSelectable}
+                    onClick={() => handleModelClick(modelId, entry)}
+                    tabIndex={isSelectable ? 0 : -1}
+                    onKeyDown={(e) => {
+                      if ((e.key === 'Enter' || e.key === ' ') && isSelectable) {
+                        e.preventDefault();
+                        handleModelClick(modelId, entry);
+                      }
+                    }}
+                  >
+                    <div className="model-selector__item-content">
+                      <span className="model-selector__item-name">{entry.model_metadata.model_name}</span>
+                      <span className="model-selector__item-meta">{modelId} &middot; v{entry.model_metadata.version}</span>
+                      {entry.status === 'failed' && (
+                        <span className="model-selector__item-failure">{entry.failure_reason || 'Failed'}</span>
+                      )}
+                    </div>
+                    {renderStatusBadge(entry.status)}
+                    {isActive && <span className="model-selector__active-badge">Active</span>}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* CV Apply button */}
+            <button
+              className={`model-selector__apply-btn ${isApplyEnabled ? 'model-selector__apply-btn--enabled' : ''}`}
+              onClick={isApplyEnabled ? handleApply : undefined}
+              disabled={!isApplyEnabled}
+              aria-label="Apply CV model selection"
+            >
+              {switchState === 'updating' ? 'Applying...' : 'Apply'}
+            </button>
+
+            {/* CV switching overlay */}
+            {(switchState === 'updating' || switchState === 'switching') && (
+              <div className="model-selector__overlay" role="status" aria-live="polite">
+                <div className="model-selector__overlay-spinner" />
+                <span className="model-selector__overlay-text">
+                  {switchState === 'updating' ? 'Updating shadow...' : 'Waiting for device to switch model...'}
+                </span>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* VLM Model group */}
+        {loadState === 'loaded' && Object.keys(vlmModels).length > 0 && (
+          <>
+            <h4 className="model-selector__group-label">VLM Model</h4>
+            <div className="model-selector__list" role="listbox" aria-label="VLM models">
+              {Object.entries(vlmModels).map(([modelId, entry]) => {
+                const isActive = modelId === activeVlmModelId;
+                const isSelectable = entry.status === 'ready' && vlmSwitchState === 'idle';
+                const classes = ['model-selector__item'];
+                if (isActive) classes.push('model-selector__item--active');
+                if (modelId === selectedVlmModelId && !isActive) classes.push('model-selector__item--selected');
+                if (entry.status === 'ready') classes.push('model-selector__item--ready');
+                if (entry.status === 'installing') { classes.push('model-selector__item--installing'); classes.push('model-selector__item--disabled'); }
+                if (entry.status === 'failed') { classes.push('model-selector__item--failed'); classes.push('model-selector__item--disabled'); }
+                return (
+                  <div
+                    key={modelId}
+                    className={classes.join(' ')}
+                    role="option"
+                    aria-selected={modelId === selectedVlmModelId}
+                    aria-disabled={!isSelectable}
+                    onClick={() => handleVlmModelClick(modelId, entry)}
+                    tabIndex={isSelectable ? 0 : -1}
+                    onKeyDown={(e) => {
+                      if ((e.key === 'Enter' || e.key === ' ') && isSelectable) {
+                        e.preventDefault();
+                        handleVlmModelClick(modelId, entry);
+                      }
+                    }}
+                  >
+                    <div className="model-selector__item-content">
+                      <span className="model-selector__item-name">{entry.model_metadata.model_name}</span>
+                      <span className="model-selector__item-meta">{modelId} &middot; v{entry.model_metadata.version}</span>
+                      {entry.status === 'failed' && (
+                        <span className="model-selector__item-failure">{entry.failure_reason || 'Failed'}</span>
+                      )}
+                    </div>
+                    {renderStatusBadge(entry.status)}
+                    {isActive && <span className="model-selector__active-badge">Active</span>}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* VLM Apply button */}
+            {(() => {
+              const vlmApplyEnabled = vlmSwitchState === 'idle' && selectedVlmModelId !== null && selectedVlmModelId !== activeVlmModelId;
+              return (
+                <button
+                  className={`model-selector__apply-btn ${vlmApplyEnabled ? 'model-selector__apply-btn--enabled' : ''}`}
+                  onClick={vlmApplyEnabled ? handleVlmApply : undefined}
+                  disabled={!vlmApplyEnabled}
+                  aria-label="Apply VLM model selection"
+                >
+                  {vlmSwitchState === 'updating' ? 'Applying...' : vlmSwitchState === 'success' ? 'Applied ✓' : 'Apply'}
+                </button>
+              );
+            })()}
+
+            {/* VLM switching overlay */}
+            {vlmSwitchState === 'updating' && (
+              <div className="model-selector__overlay" role="status" aria-live="polite">
+                <div className="model-selector__overlay-spinner" />
+                <span className="model-selector__overlay-text">Updating shadow...</span>
+              </div>
+            )}
+          </>
         )}
       </div>
 

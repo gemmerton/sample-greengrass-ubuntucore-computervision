@@ -315,6 +315,20 @@
   margin-top: var(--spacing-xs);
 }
 
+/* Group Label */
+.model-selector__group-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted, #888);
+  margin: 12px 0 6px 0;
+  padding: 0;
+}
+
+.model-selector__group-label:first-child {
+  margin-top: 0;
+}
+
 /* Hint Message */
 .model-selector__hint {
   font-size: var(--font-size-xs);
