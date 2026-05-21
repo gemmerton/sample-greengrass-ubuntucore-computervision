@@ -184,8 +184,7 @@
   overflow-y: auto;
   overflow-x: hidden;
   padding: var(--spacing-md);
-  min-height: 300px;
-  max-height: 500px;
+  min-height: 0;
   scroll-behavior: smooth;
   scrollbar-width: thin;
   scrollbar-color: rgba(255,255,255,0.1) transparent;
