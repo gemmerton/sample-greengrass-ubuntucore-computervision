@@ -53,7 +53,7 @@ describe('ModelSelector Rendering', () => {
       ).toBeInTheDocument();
     });
 
-    test('renders authentication required message when credentials are null', () => {
+    test('renders loading state when credentials are null', () => {
       mockUseAuthenticatedAWS.mockReturnValue({
         credentials: null,
         isAuthenticated: false,
@@ -63,7 +63,7 @@ describe('ModelSelector Rendering', () => {
       render(<ModelSelector thingName="my-thing" />);
 
       expect(
-        screen.getByText(/Authentication required to manage model selection/i)
+        screen.getByText(/Loading models/i)
       ).toBeInTheDocument();
     });
   });
@@ -94,7 +94,7 @@ describe('ModelSelector Rendering', () => {
 
       await waitFor(() => {
         expect(
-          screen.getByText(/No models installed on device/i)
+          screen.getByText(/No CV models installed on device/i)
         ).toBeInTheDocument();
       });
     });

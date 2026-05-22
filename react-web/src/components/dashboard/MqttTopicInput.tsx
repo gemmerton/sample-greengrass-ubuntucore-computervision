@@ -10,6 +10,7 @@ export interface MqttTopicInputProps {
   className?: string;
   showLabel?: boolean;
   disabled?: boolean;
+  topic?: string;
   onTopicChange?: (topic: string) => void;
 }
 
@@ -17,11 +18,12 @@ export const MqttTopicInput: React.FC<MqttTopicInputProps> = ({
   className = '',
   showLabel = true,
   disabled = false,
+  topic = '',
   onTopicChange,
 }) => {
   const { state, actions } = useMqtt();
-  const [inputValue, setInputValue] = useState('');
-  const [selectedTopic, setSelectedTopic] = useState<string | null>(null);
+  const [inputValue, setInputValue] = useState(topic);
+  const [selectedTopic, setSelectedTopic] = useState<string | null>(topic || null);
 
   const handleInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setInputValue(event.target.value);

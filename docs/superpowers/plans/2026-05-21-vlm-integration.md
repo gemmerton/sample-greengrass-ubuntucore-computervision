@@ -1,12 +1,14 @@
 # VLM Integration Implementation Plan
 
+> **SUPERSEDED (2026-05-21):** Task 10 (VlmHandler component) and Task 13 (device validation) below describe the original OpenVINO GenAI direct-loading approach. The implementation was refactored to use an **inference snap HTTP API** approach instead — see commits `6755da4` and `320572b`. VlmHandler is now a lightweight HTTP client calling the snap's OpenAI-compatible API on port 9090. The inference snap uses OpenVINO internally for Intel hardware acceleration. Tasks 1-9, 11-12 (React app, shadow service, ModelManagerCore, deploy) remain accurate.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add a Vision Language Model component to the edge device for scene risk analysis, with prompt management via shadow and a React dashboard for displaying assessments.
 
-**Architecture:** New `VlmHandler` Greengrass component loads VLM models via OpenVINO GenAI Python API, runs inference on camera snapshots at a configurable interval, publishes structured risk assessments to MQTT. React app subscribes and renders a risk panel, timeline, and prompt editor. Model provisioning reuses the existing shadow-driven snap component flow.
+**Architecture:** New `VlmHandler` Greengrass component calls a VLM inference snap's OpenAI-compatible HTTP API (`/v1/chat/completions`) with camera snapshots at a configurable interval, publishes structured risk assessments to MQTT. The inference snap runs OpenVINO internally for Intel hardware acceleration. React app subscribes and renders a risk panel, timeline, and prompt editor. Model provisioning reuses the existing shadow-driven snap component flow.
 
-**Tech Stack:** Python (OpenVINO GenAI), Greengrass IPC (MQTT), boto3 (cloud shadow), React/TypeScript, AWS IoT Shadow
+**Tech Stack:** Python (requests + HTTP API), Greengrass IPC (MQTT), boto3 (cloud shadow), React/TypeScript, AWS IoT Shadow
 
 ---
 

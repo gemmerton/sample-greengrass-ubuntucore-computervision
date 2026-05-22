@@ -1,6 +1,6 @@
 # VLM Integration Design
 
-Edge Vision Language Model integration for scene risk analysis, running alongside existing CV models on Ubuntu Core with OpenVINO.
+Edge Vision Language Model integration for scene risk analysis, running alongside existing CV models on Ubuntu Core. The VLM runs inside a dedicated inference snap that uses OpenVINO for Intel hardware acceleration.
 
 ## Goals
 
@@ -17,16 +17,22 @@ Edge Vision Language Model integration for scene risk analysis, running alongsid
 │                                                              │
 │  ┌──────────────────┐   ┌──────────────────┐               │
 │  │  InferenceHandler │   │   VlmHandler      │               │
-│  │  (CV model)       │   │   (VLM model)     │               │
-│  │  - OVMS gRPC      │   │   - OpenVINO GenAI│               │
+│  │  (CV model)       │   │   (Greengrass)    │               │
+│  │  - OVMS gRPC      │   │   - HTTP client   │               │
 │  │  - 1 Hz           │   │   - 10-30s cycle  │               │
 │  │  → camera/inference│   │   → camera/vlm    │               │
-│  └──────────────────┘   └──────────────────┘               │
-│           │                       │                          │
-│           │     ┌─────────────┐   │                          │
-│           └────►│ KvsProducer │◄──┘  (both read snapshots)   │
-│                 │ (snapshots) │                               │
-│                 └─────────────┘                               │
+│  └──────────────────┘   └────────┬───────────┘               │
+│           │                       │ HTTP :9090               │
+│           │     ┌─────────────┐   │  (base64 image in req)   │
+│           └────►│ KvsProducer │◄──┘                          │
+│                 │ (snapshots) │       ┌──────────────────┐   │
+│                 └─────────────┘       │  VLM Inference   │   │
+│                       ▲               │  Snap (e.g.      │   │
+│                       │               │  qwen-vl)        │   │
+│                       │               │  - OpenVINO      │   │
+│                (VlmHandler reads      │  - OpenAI API    │   │
+│                 snapshots, sends      └──────────────────┘   │
+│                 to snap via HTTP)                             │
 │                                                              │
 │  ┌──────────────────────────────────────┐                   │
 │  │  ModelManagerCore                     │                   │
@@ -56,19 +62,33 @@ Edge Vision Language Model integration for scene risk analysis, running alongsid
 
 Key principles:
 - VlmHandler is a new Greengrass component, separate from InferenceHandler
-- Both read frames from the same snapshot directory written by KvsProducer
+- VlmHandler is a lightweight HTTP client — the heavy VLM runtime lives in a dedicated inference snap
+- The inference snap (e.g. `qwen-vl`) runs OpenVINO internally for Intel hardware acceleration, exposing an OpenAI-compatible API on port 9090
+- VlmHandler reads snapshots from KvsProducer's shared directory and sends them as base64 images to the inference snap via HTTP
 - ModelManagerCore handles provisioning for both CV and VLM models, distinguished by a `type` field
 - VLM prompt config lives in the `model-config` shadow as a `vlm_config` section
 - VLM results publish to a dedicated MQTT topic (`camera/vlm`)
 
 ## VLM Runtime
 
-The VLM runs via the OpenVINO GenAI Python API (`openvino_genai.VLMPipeline`). This provides:
-- Native OpenVINO hardware acceleration (CPU/GPU/NPU)
+The VLM runs inside a dedicated **inference snap** installed on the Ubuntu Core device (e.g. `qwen-vl`, `gemma3`). The snap encapsulates:
+- The VLM model weights (OpenVINO IR format)
+- The OpenVINO runtime for Intel hardware acceleration (CPU/GPU/NPU)
 - Tokenizer management and KV-cache for autoregressive generation
-- Direct model loading from OpenVINO IR files on disk
+- An OpenAI-compatible HTTP API server on port 9090
 
-OVMS is not used for VLM inference because VLM text generation is stateful and iterative (autoregressive token-by-token), which does not map to OVMS's stateless tensor-in/tensor-out predict API.
+VlmHandler does **not** load the model directly. It is a thin Greengrass component that:
+1. Reads camera snapshots from the shared directory
+2. Sends them as base64-encoded images to the snap's `/v1/chat/completions` endpoint
+3. Parses the structured response and publishes to MQTT
+
+This approach was chosen over direct `openvino_genai.VLMPipeline` usage because:
+- **Snap confinement**: The VLM runtime's C++ libraries, mmap'd model files, and tokenizer temp files are fully contained within the snap's confinement, avoiding complex interface/plug requirements
+- **Separation of concerns**: The inference runtime lifecycle (model loading, memory management, GPU allocation) is independent of the Greengrass component lifecycle
+- **Reusability**: The same inference snap can be used by other consumers on the device
+- **Upgradability**: The VLM model/runtime can be upgraded by refreshing the snap without redeploying the Greengrass component
+
+OVMS is not used for VLM inference because VLM text generation is stateful and iterative (autoregressive token-by-token), which does not map to OVMS's stateless tensor-in/tensor-out predict API. The inference snap handles this statefulness internally.
 
 ## Shadow Schema
 
@@ -150,21 +170,22 @@ New Greengrass component: `com.example.VlmHandler`
 ```
 Startup:
   1. Read shadow → get active_vlm_model + vlm_config
-  2. Load model from local_path via VLMPipeline(model_path)
+  2. Poll inference snap health endpoint (GET /v1/models) until available
   3. Subscribe to shadow delta (active_vlm_model, vlm_config changes)
   4. Enter inference loop
 
 Inference loop (every inference_interval seconds):
-  1. Read latest snapshot from shared directory
-  2. Build generation prompt from system_prompt + user_prompt
-  3. Call pipeline.generate(prompt, image, max_tokens)
-  4. Parse JSON response (with fallback for malformed output)
-  5. Publish to camera/vlm MQTT topic
-  6. Report timing stats
+  1. Check inference snap health (skip cycle if unavailable)
+  2. Read latest snapshot from shared directory
+  3. Base64-encode the image
+  4. POST to snap's /v1/chat/completions with system_prompt + user_prompt + image
+  5. Parse JSON response (with fallback for malformed output)
+  6. Publish to camera/vlm MQTT topic
+  7. Report timing stats
 
 Delta handling:
-  - active_vlm_model changed → unload current, load new model, report
-  - vlm_config changed → update prompts/interval in-place (no model reload needed)
+  - active_vlm_model changed → report new model ID (snap manages model loading)
+  - vlm_config changed → update prompts/interval in-place (no restart needed)
 ```
 
 ### MQTT Payload Schema
@@ -215,8 +236,9 @@ Topic: `camera/vlm`
 - Dependencies: `aws.greengrass.TokenExchangeService ^2.0.0`
 - Access control: MQTT proxy for `camera/vlm` publish + `$aws/things/*/shadow/name/model-config/update/delta` subscribe
 - Artifacts: `vlm_handler.py`, `cloud_shadow.py`, `get-pip.py`, `requirements.txt`
-- Environment variables: `AWS_IOT_THING_NAME`, `SNAPSHOT_DIR`
-- Python requirements: `openvino`, `openvino-genai`, `Pillow`, `boto3`, `awsiotsdk`
+- Environment variables: `AWS_IOT_THING_NAME`, `SNAPSHOT_DIR`, `VLM_ENDPOINT`
+- Configuration: `VlmEndpoint` (default: `http://localhost:9090/v1/chat/completions`)
+- Python requirements: `requests`, `boto3`, `awsiotsdk` (lightweight — no OpenVINO dependencies)
 
 ## ModelManagerCore Changes
 
@@ -224,7 +246,7 @@ Minimal changes to the existing component.
 
 ### Behaviour Changes
 
-1. **Type-aware OVMS config**: When a model with `type: "vlm"` reaches `ready` status, do NOT add it to OVMS's `models_config.json`. VLM models are loaded directly by VlmHandler.
+1. **Type-aware OVMS config**: When a model with `type: "vlm"` reaches `ready` status, do NOT add it to OVMS's `models_config.json`. VLM models are served by the inference snap, not OVMS.
 
 2. **Seed vlm_config defaults**: After the first VLM model reaches `ready`, if no `vlm_config` exists in the shadow reported state, seed it from the model's manifest defaults.
 
@@ -355,24 +377,17 @@ Extended layout:
 
 ## Risks and Mitigations
 
-### Risk 1: Snap confinement with openvino-genai (HIGH)
+### Risk 1: Inference snap availability (MEDIUM)
 
-The `openvino-genai` wheel includes compiled C++ libraries that mmap model files and create temporary files for tokenizer state. In strict snap confinement, file access is restricted.
+The VLM inference snap must be installed and running before VlmHandler can operate. If the snap is not installed, crashes, or is still loading the model, VlmHandler has no inference backend.
 
-**Symptoms if this fails:** Segfault or permission error when VLMPipeline loads a model or during token generation.
-
-**Fallback options (ordered by preference):**
-1. **Env var workaround**: Set `TMPDIR`, `XDG_CACHE_HOME`, and OpenVINO cache dir to the component's work directory (writable in strict confinement)
-2. **Dedicated vlm-engine snap**: Package the OpenVINO GenAI runtime into a new snap with content interfaces (mirrors the `ovms-engine` pattern for GStreamer/KVS)
-3. **Devmode during validation**: Use `--devmode` confinement to identify exactly which paths need access, then add targeted snap interfaces
-
-**Validation step (do early):** Before building the full component, pip-install `openvino-genai` in a venv on the device and run a minimal `VLMPipeline` load + generate to confirm it works within confinement.
+**Mitigation:** VlmHandler polls the snap's `/v1/models` health endpoint before each inference cycle. If unavailable, it logs and retries every 10 seconds. The React dashboard shows a "Waiting for VLM analysis..." placeholder until results arrive.
 
 ### Risk 2: VLM model size vs device memory (MEDIUM)
 
-Small VLMs (LLaVA-Phi-3, MobileVLM) are 2-4GB. The device needs enough RAM to hold both the OVMS-served CV model and the VLM simultaneously.
+Small VLMs (Qwen-VL, Gemma3) are 2-4GB. The device needs enough RAM to hold both the OVMS-served CV model and the VLM simultaneously.
 
-**Mitigation:** Target quantized models (INT4/INT8) which reduce memory by 2-4x. Document minimum RAM requirements per supported VLM model.
+**Mitigation:** Target quantized models (INT4/INT8) which reduce memory by 2-4x. The inference snap handles model loading and memory management independently of Greengrass. Document minimum RAM requirements per supported VLM snap.
 
 ### Risk 3: VLM output quality with small models (MEDIUM)
 
@@ -386,18 +401,33 @@ VLM inference takes 1-10+ seconds. Users may think the system is unresponsive.
 
 **Mitigation:** Staleness indicator on VLM panel, inference time display, and the independent timer means the CV overlay keeps updating at 1Hz regardless of VLM pace.
 
+## Inference Snap Convention
+
+VLM inference snaps follow these conventions:
+
+| Property | Convention |
+|----------|------------|
+| API port | 9090 |
+| API format | OpenAI-compatible (`/v1/chat/completions`, `/v1/models`) |
+| Image input | Base64-encoded JPEG in `image_url` content block |
+| Runtime | OpenVINO (optimised for Intel CPU/GPU/NPU) |
+| Install | `sudo snap install <snap-name>` |
+| Model loading | Automatic on snap start (model weights bundled in snap) |
+
+Example snaps: `qwen-vl`, `gemma3`
+
 ## Model Candidates
 
-Suitable VLMs for OpenVINO edge deployment (in order of size/capability):
+Suitable VLMs for inference snap deployment on Intel hardware (in order of size/capability):
 
-| Model | Size (FP16) | Size (INT4) | Notes |
-|-------|-------------|-------------|-------|
-| MobileVLM v2 | ~3GB | ~1GB | Smallest, may struggle with JSON output |
-| LLaVA-Phi-3 | ~4GB | ~1.5GB | Good balance of size and capability |
-| InternVL2-2B | ~4GB | ~1.5GB | Strong visual understanding |
-| LLaVA-1.5-7B | ~14GB | ~4GB | Most capable, needs significant RAM |
+| Model | Size (INT4) | Snap Name | Notes |
+|-------|-------------|-----------|-------|
+| Qwen-VL | ~2GB | `qwen-vl` | Good balance of size, vision capability, and JSON output |
+| Gemma 3 | ~2.5GB | `gemma3` | Strong instruction following |
+| LLaVA-Phi-3 | ~1.5GB | TBD | Smaller, may struggle with structured output |
+| InternVL2-2B | ~1.5GB | TBD | Strong visual understanding |
 
-Model selection depends on target hardware. The architecture supports any model that can be converted to OpenVINO IR format and loaded via `openvino_genai.VLMPipeline`.
+Model selection depends on available snap packages and device RAM. All models use OpenVINO IR format internally within the snap.
 
 ## Out of Scope
 

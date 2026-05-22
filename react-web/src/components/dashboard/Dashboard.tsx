@@ -19,6 +19,7 @@ import { MqttTopicInput } from './MqttTopicInput';
 import { ThingNameInput } from './ThingNameInput';
 import { ConfidenceThresholdControl } from './ConfidenceThresholdControl';
 import { ModelSelector } from '../controls/ModelSelector';
+import { VlmModelSelector } from '../controls/VlmModelSelector';
 import { S3Provider } from '../../contexts/S3Context';
 import { MqttProvider, useMqtt } from '../../contexts/MqttContext';
 import { useAuthenticatedAWS } from '../../hooks/useAuthenticatedAWS';
@@ -42,7 +43,8 @@ const DashboardContent: React.FC<DashboardProps> = ({
   const { state: mqttState } = useMqtt();
   const { credentials, region } = useAuthenticatedAWS();
   const [thingName, setThingName] = useState<string>('');
-  const [settingsOpen, setSettingsOpen] = useState<boolean>(false);
+  const [mqttTopic, setMqttTopic] = useState<string>('');
+  const [activeLeftPanel, setActiveLeftPanel] = useState<'general' | 'cv' | 'vlm' | null>(null);
   const [messagePanelOpen, setMessagePanelOpen] = useState<boolean>(false);
   const [videoElement, setVideoElement] = useState<HTMLVideoElement | null>(null);
   const { latestResult } = useInferenceResults();
@@ -52,7 +54,7 @@ const DashboardContent: React.FC<DashboardProps> = ({
    * Handle MQTT topic change
    */
   const handleMqttTopicChange = useCallback((topic: string) => {
-    console.log('MQTT topic changed:', topic);
+    setMqttTopic(topic);
   }, []);
 
   // Determine MQTT status from context
@@ -122,32 +124,64 @@ const DashboardContent: React.FC<DashboardProps> = ({
         </div>
       </main>
 
-      {/* Settings - slide-out panel from left */}
-      <button
-        className={`dashboard__drawer-tab dashboard__drawer-tab--left ${settingsOpen ? 'dashboard__drawer-tab--active' : ''}`}
-        onClick={() => setSettingsOpen(!settingsOpen)}
-        aria-expanded={settingsOpen}
-        aria-controls="settings-drawer"
-        aria-label={settingsOpen ? 'Hide settings' : 'Show settings'}
-      >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <circle cx="12" cy="12" r="3"></circle>
-          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-        </svg>
-        <span className="dashboard__drawer-tab-label">Settings</span>
-      </button>
+      {/* Left panel tabs */}
+      <div className={`dashboard__left-tabs ${activeLeftPanel ? 'dashboard__left-tabs--shifted' : ''}`}>
+        <button
+          className={`dashboard__drawer-tab dashboard__drawer-tab--left ${activeLeftPanel === 'general' ? 'dashboard__drawer-tab--active' : ''}`}
+          onClick={() => setActiveLeftPanel(activeLeftPanel === 'general' ? null : 'general')}
+          aria-expanded={activeLeftPanel === 'general'}
+          aria-controls="settings-drawer"
+          aria-label={activeLeftPanel === 'general' ? 'Hide general settings' : 'Show general settings'}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+          <span className="dashboard__drawer-tab-label">General</span>
+        </button>
+        <button
+          className={`dashboard__drawer-tab dashboard__drawer-tab--left dashboard__drawer-tab--cv ${activeLeftPanel === 'cv' ? 'dashboard__drawer-tab--active' : ''}`}
+          onClick={() => setActiveLeftPanel(activeLeftPanel === 'cv' ? null : 'cv')}
+          aria-expanded={activeLeftPanel === 'cv'}
+          aria-controls="settings-drawer"
+          aria-label={activeLeftPanel === 'cv' ? 'Hide CV settings' : 'Show CV settings'}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <rect x="2" y="2" width="20" height="20" rx="2"></rect>
+            <circle cx="8.5" cy="8.5" r="1.5"></circle>
+            <polyline points="21 15 16 10 5 21"></polyline>
+          </svg>
+          <span className="dashboard__drawer-tab-label">CV</span>
+        </button>
+        <button
+          className={`dashboard__drawer-tab dashboard__drawer-tab--left dashboard__drawer-tab--vlm ${activeLeftPanel === 'vlm' ? 'dashboard__drawer-tab--active' : ''}`}
+          onClick={() => setActiveLeftPanel(activeLeftPanel === 'vlm' ? null : 'vlm')}
+          aria-expanded={activeLeftPanel === 'vlm'}
+          aria-controls="settings-drawer"
+          aria-label={activeLeftPanel === 'vlm' ? 'Hide VLM settings' : 'Show VLM settings'}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+          </svg>
+          <span className="dashboard__drawer-tab-label">VLM</span>
+        </button>
+      </div>
 
       <aside
         id="settings-drawer"
-        className={`dashboard__drawer dashboard__drawer--left ${settingsOpen ? 'dashboard__drawer--open' : ''}`}
+        className={`dashboard__drawer dashboard__drawer--left ${activeLeftPanel ? 'dashboard__drawer--open' : ''}`}
         aria-label="Settings"
-        aria-hidden={!settingsOpen}
+        aria-hidden={!activeLeftPanel}
       >
         <div className="dashboard__drawer-header">
-          <h3 className="dashboard__drawer-title">Settings</h3>
+          <h3 className="dashboard__drawer-title">
+            {activeLeftPanel === 'general' && 'General Settings'}
+            {activeLeftPanel === 'cv' && 'CV Inference'}
+            {activeLeftPanel === 'vlm' && 'VLM Controls'}
+          </h3>
           <button
             className="dashboard__drawer-close"
-            onClick={() => setSettingsOpen(false)}
+            onClick={() => setActiveLeftPanel(null)}
             aria-label="Close settings panel"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -157,35 +191,42 @@ const DashboardContent: React.FC<DashboardProps> = ({
           </button>
         </div>
         <div className="dashboard__drawer-content">
-          <div className="dashboard__settings-section">
-            <h3 className="dashboard__settings-heading">Data Sources</h3>
-            <div className="dashboard__settings-stack">
-              <MqttTopicInput
-                className="dashboard__settings-field"
-                onTopicChange={handleMqttTopicChange}
-              />
-              <ThingNameInput
-                className="dashboard__settings-field"
-                thingName={thingName}
-                onThingNameChange={setThingName}
-              />
-            </div>
-          </div>
-          <div className="dashboard__settings-section">
-            <h3 className="dashboard__settings-heading">Inference Controls</h3>
-            <div className="dashboard__settings-stack">
-              <div className="dashboard__settings-field">
-                <ConfidenceThresholdControl thingName={thingName} />
-              </div>
-              <div className="dashboard__settings-field">
-                <ModelSelector thingName={thingName} />
+          <div className={`dashboard__panel-page ${activeLeftPanel === 'general' ? 'dashboard__panel-page--active' : ''}`}>
+            <div className="dashboard__settings-section">
+              <div className="dashboard__settings-stack">
+                <MqttTopicInput
+                  className="dashboard__settings-field"
+                  topic={mqttTopic}
+                  onTopicChange={handleMqttTopicChange}
+                />
+                <ThingNameInput
+                  className="dashboard__settings-field"
+                  thingName={thingName}
+                  onThingNameChange={setThingName}
+                />
               </div>
             </div>
           </div>
-          <div className="dashboard__settings-section">
-            <h3 className="dashboard__settings-heading">VLM Prompt</h3>
-            <div className="dashboard__settings-stack">
-              <VlmPromptEditor thingName={thingName} />
+          <div className={`dashboard__panel-page ${activeLeftPanel === 'cv' ? 'dashboard__panel-page--active' : ''}`}>
+            <div className="dashboard__settings-section">
+              <div className="dashboard__settings-stack">
+                <div className="dashboard__settings-field">
+                  <ConfidenceThresholdControl thingName={thingName} />
+                </div>
+                <div className="dashboard__settings-field">
+                  <ModelSelector thingName={thingName} />
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className={`dashboard__panel-page ${activeLeftPanel === 'vlm' ? 'dashboard__panel-page--active' : ''}`}>
+            <div className="dashboard__settings-section">
+              <div className="dashboard__settings-stack">
+                <div className="dashboard__settings-field">
+                  <VlmModelSelector thingName={thingName} />
+                </div>
+                <VlmPromptEditor thingName={thingName} />
+              </div>
             </div>
           </div>
         </div>
