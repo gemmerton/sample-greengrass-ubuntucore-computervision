@@ -282,19 +282,14 @@ class InferenceHandler:
         return np.expand_dims(np.transpose(rgb, (2, 0, 1)), axis=0).astype(out_dtype)
 
     def _load_labels(self):
-        """Load labels from the model's labels.txt file."""
-        labels_file = self.model_metadata.get("labels_file")
-        local_path = self.model_metadata.get("local_path", "")
-        if not labels_file or not local_path:
+        """Load labels from the path stored in model metadata."""
+        labels_path = self.model_metadata.get("labels_file")
+        if not labels_path:
             self.labels = {}
             return
 
-        component_dir = os.path.dirname(local_path.rstrip("/"))
-        labels_path = os.path.join(component_dir, labels_file)
         if not os.path.isfile(labels_path):
-            labels_path = os.path.join(local_path, labels_file)
-        if not os.path.isfile(labels_path):
-            logger.warning("Labels file not found: %s", labels_file)
+            logger.warning("Labels file not found: %s", labels_path)
             self.labels = {}
             return
 

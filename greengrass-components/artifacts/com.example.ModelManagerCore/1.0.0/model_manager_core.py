@@ -340,6 +340,23 @@ class ModelManagerCore:
             )
             return
 
+        # Copy labels file to the shared writable area so InferenceHandler can read it
+        # (snap confinement prevents cross-snap filesystem access)
+        labels_path = None
+        labels_file = manifest.get("labels_file")
+        if labels_file and component_path:
+            src_labels = os.path.join(component_path, labels_file)
+            if os.path.isfile(src_labels):
+                labels_dir = os.path.join(self.snap_common_path, "labels")
+                os.makedirs(labels_dir, exist_ok=True)
+                dest_labels = os.path.join(labels_dir, f"{model_id}.txt")
+                try:
+                    shutil.copy2(src_labels, dest_labels)
+                    labels_path = dest_labels
+                    logger.info("Copied labels to shared path: %s", dest_labels)
+                except Exception as e:
+                    logger.warning("Failed to copy labels file: %s", e)
+
         model_metadata = {
             "model_name": manifest.get("model_name"),
             "version": manifest.get("version"),
@@ -347,7 +364,7 @@ class ModelManagerCore:
             "output_names": manifest.get("output_names"),
             "input_shape": manifest.get("input_shape"),
             "input_dtype": manifest.get("input_dtype"),
-            "labels_file": manifest.get("labels_file"),
+            "labels_file": labels_path,
             "local_path": model_path,
             "default_system_prompt": manifest.get("default_system_prompt"),
             "default_user_prompt": manifest.get("default_user_prompt"),
