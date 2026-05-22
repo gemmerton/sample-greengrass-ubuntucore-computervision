@@ -37,7 +37,7 @@ tar xzf "$TEMP_DIR/model.tar.gz" -C "$TEMP_DIR"
 
 # Step 3: Convert to OpenVINO IR
 echo "Step 3: Converting to OpenVINO IR format with ovc..."
-ovc "$TEMP_DIR/saved_model" \
+ovc "$TEMP_DIR" \
     --output_model "$MODEL_DIR/saved_model"
 
 # Step 4: Verify
