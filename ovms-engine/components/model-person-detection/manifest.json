@@ -1,0 +1,11 @@
+{
+    "model_id": "person-detection",
+    "model_name": "person_detection",
+    "version": "1.0.0",
+    "input_name": "data",
+    "output_names": [
+        "detection_out"
+    ],
+    "input_shape": [1, 3, 320, 544],
+    "labels_file": "labels.txt"
+}

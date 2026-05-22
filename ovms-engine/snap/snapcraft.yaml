@@ -117,6 +117,7 @@ parts:
       "ovms-gpu/*": (component/ovms-gpu)/
       "ovms-npu/*": (component/ovms-npu)/
       "model-faster-rcnn/*": (component/model-faster-rcnn)/
+      "model-person-detection/*": (component/model-person-detection)/
       "model-efficientnet/*": (component/model-efficientnet)/
 
 apps:
@@ -181,11 +182,20 @@ components:
   # Model components (OpenVINO IR format)
   model-faster-rcnn:
     type: standard
-    summary: Faster R-CNN object detection model (OpenVINO IR)
+    summary: Faster R-CNN COCO 90-class object detection model (OpenVINO IR)
     description: |
-      Faster R-CNN ResNet50 object detection model trained on COCO dataset.
+      Faster R-CNN ResNet50 object detection model trained on COCO dataset
+      (90 object classes). Converted from TF2 with fixed 640x640 input shape.
       Includes OpenVINO IR format weights (.xml/.bin) and manifest.json
       with model metadata for auto-configuration.
+
+  model-person-detection:
+    type: standard
+    summary: Person detection model (OpenVINO IR)
+    description: |
+      Intel person-detection-retail-0013 model optimised for detecting people.
+      Lightweight model (~70ms inference) with fixed 320x544 input shape.
+      Includes OpenVINO IR format weights (.xml/.bin) and manifest.json.
 
   model-efficientnet:
     type: standard

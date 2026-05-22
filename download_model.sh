@@ -1,73 +1,100 @@
 #!/bin/bash
 
-# Download and convert Faster R-CNN ResNet50 v1 (COCO 90-class) to OpenVINO IR format
-# for the ovms-engine snap model component.
+# Download and prepare OpenVINO IR models for the ovms-engine snap components.
 #
-# This model detects 90 object categories (person, car, bicycle, dog, chair, etc.)
-# and outputs in the TF2 multi-tensor detection format.
+# Downloads two models:
+#   1. person-detection-retail-0013 (Intel model zoo, 2-class person detection)
+#   2. Faster R-CNN ResNet50 (Kaggle/TF2, 90-class COCO object detection)
 #
 # Prerequisites:
 #   pip install openvino openvino-dev[tensorflow2] tensorflow
 #
-# Output files go into ovms-engine/components/model-faster-rcnn/1/
-# which is the OVMS model repository layout (model_name/version/model.xml+bin)
+# Run from the repo root directory.
 
 set -e
 
-COMPONENT_DIR="ovms-engine/components/model-faster-rcnn"
-MODEL_DIR="$COMPONENT_DIR/1"
+PERSON_DET_DIR="ovms-engine/components/model-person-detection/1"
+FASTER_RCNN_DIR="ovms-engine/components/model-faster-rcnn/1"
 TEMP_DIR="temp_model_download"
 
-echo "=== Faster R-CNN ResNet50 v1 640x640 (COCO 90-class) ==="
+echo "=== Model Download and Conversion ==="
 echo ""
 
-# Create directories
-mkdir -p "$MODEL_DIR"
+mkdir -p "$PERSON_DET_DIR"
+mkdir -p "$FASTER_RCNN_DIR"
 mkdir -p "$TEMP_DIR"
 
-# Step 1: Download
-echo "Step 1: Downloading model from Kaggle..."
-curl -L --progress-bar \
-    https://www.kaggle.com/api/v1/models/tensorflow/faster-rcnn-resnet-v1/tensorFlow2/faster-rcnn-resnet50-v1-640x640/1/download \
-    -o "$TEMP_DIR/model.tar.gz"
+# ─── Model 1: Person Detection (Intel Model Zoo) ────────────────────────────
 
-# Step 2: Extract
-echo "Step 2: Extracting..."
-tar xzf "$TEMP_DIR/model.tar.gz" -C "$TEMP_DIR"
-
-# Step 3: Convert to OpenVINO IR
-echo "Step 3: Converting to OpenVINO IR format with ovc..."
-ovc "$TEMP_DIR" \
-    --output_model "$MODEL_DIR/saved_model"
-
-# Step 4: Verify
+echo "─── [1/2] Person Detection (person-detection-retail-0013) ───"
 echo ""
-echo "Step 4: Verifying output..."
-if [ -f "$MODEL_DIR/saved_model.xml" ] && [ -f "$MODEL_DIR/saved_model.bin" ]; then
-    echo "  $MODEL_DIR/saved_model.xml ($(du -h "$MODEL_DIR/saved_model.xml" | cut -f1))"
-    echo "  $MODEL_DIR/saved_model.bin ($(du -h "$MODEL_DIR/saved_model.bin" | cut -f1))"
-    echo ""
-    echo "Conversion successful."
+
+PERSON_DET_URL="https://storage.openvinotoolkit.org/repositories/open_model_zoo/2023.0/models_bin/1/person-detection-retail-0013/FP32"
+
+echo "Downloading model files..."
+curl -L --progress-bar "$PERSON_DET_URL/person-detection-retail-0013.xml" -o "$PERSON_DET_DIR/saved_model.xml"
+curl -L --progress-bar "$PERSON_DET_URL/person-detection-retail-0013.bin" -o "$PERSON_DET_DIR/saved_model.bin"
+
+if [ -f "$PERSON_DET_DIR/saved_model.xml" ] && [ -f "$PERSON_DET_DIR/saved_model.bin" ]; then
+    echo "  $PERSON_DET_DIR/saved_model.xml ($(du -h "$PERSON_DET_DIR/saved_model.xml" | cut -f1))"
+    echo "  $PERSON_DET_DIR/saved_model.bin ($(du -h "$PERSON_DET_DIR/saved_model.bin" | cut -f1))"
+    echo "  Done."
 else
-    echo "ERROR: Expected output files not found."
-    echo "Ensure openvino-dev is installed: pip install openvino-dev[tensorflow2]"
-    rm -rf "$TEMP_DIR"
+    echo "ERROR: Person detection model download failed."
     exit 1
 fi
 
-# Clean up temp download
+echo ""
+
+# ─── Model 2: Faster R-CNN COCO (Kaggle TF2 → OpenVINO conversion) ──────────
+
+echo "─── [2/2] Faster R-CNN ResNet50 COCO 90-class ───"
+echo ""
+
+if [ -f "$TEMP_DIR/saved_model.pb" ]; then
+    echo "Using cached download in $TEMP_DIR/"
+else
+    echo "Step 1: Downloading from Kaggle..."
+    curl -L --progress-bar \
+        https://www.kaggle.com/api/v1/models/tensorflow/faster-rcnn-resnet-v1/tensorFlow2/faster-rcnn-resnet50-v1-640x640/1/download \
+        -o "$TEMP_DIR/model.tar.gz"
+
+    echo "Step 2: Extracting..."
+    tar xzf "$TEMP_DIR/model.tar.gz" -C "$TEMP_DIR"
+    rm -f "$TEMP_DIR/model.tar.gz"
+fi
+
+echo "Step 3: Converting to OpenVINO IR (fixed 640x640 input shape)..."
+ovc "$TEMP_DIR" \
+    --input "[1,640,640,3]" \
+    --output_model "$FASTER_RCNN_DIR/saved_model"
+
+if [ -f "$FASTER_RCNN_DIR/saved_model.xml" ] && [ -f "$FASTER_RCNN_DIR/saved_model.bin" ]; then
+    echo "  $FASTER_RCNN_DIR/saved_model.xml ($(du -h "$FASTER_RCNN_DIR/saved_model.xml" | cut -f1))"
+    echo "  $FASTER_RCNN_DIR/saved_model.bin ($(du -h "$FASTER_RCNN_DIR/saved_model.bin" | cut -f1))"
+    echo "  Done."
+else
+    echo "ERROR: Faster R-CNN conversion failed."
+    echo "Ensure openvino-dev is installed: pip install openvino-dev[tensorflow2] tensorflow"
+    exit 1
+fi
+
+# ─── Clean up ────────────────────────────────────────────────────────────────
+
 rm -rf "$TEMP_DIR"
 
 echo ""
-echo "=== Done ==="
+echo "=== All models ready ==="
 echo ""
-echo "Component directory: $COMPONENT_DIR/"
-echo "  manifest.json         - model metadata (NHWC uint8 640x640, TF2 output format)"
-echo "  labels.txt            - COCO 91-class labels (index 0 = background)"
-echo "  1/saved_model.xml     - OpenVINO IR graph"
-echo "  1/saved_model.bin     - OpenVINO IR weights"
+echo "Model components:"
+echo "  ovms-engine/components/model-person-detection/"
+echo "    manifest.json  - 2-class person detection, [1,3,320,544] NCHW, float32"
+echo "    labels.txt     - background, person"
+echo "    1/saved_model.xml + .bin"
 echo ""
-echo "Next steps:"
-echo "  1. Rebuild the ovms-engine snap to include this model component"
-echo "  2. Install the snap on the device: sudo snap install ovms-engine+model-faster-rcnn.snap --devmode"
-echo "  3. Add 'faster-rcnn' to desired.models in the shadow with type: 'cv'"
+echo "  ovms-engine/components/model-faster-rcnn/"
+echo "    manifest.json  - 90-class COCO detection, [1,640,640,3] NHWC, uint8"
+echo "    labels.txt     - 91 COCO classes"
+echo "    1/saved_model.xml + .bin"
+echo ""
+echo "Next: run 'snapcraft' in ovms-engine/ to build the snap with both model components."
