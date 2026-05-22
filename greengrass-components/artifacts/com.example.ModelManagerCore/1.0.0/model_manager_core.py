@@ -344,18 +344,35 @@ class ModelManagerCore:
         # (snap confinement prevents cross-snap filesystem access)
         labels_path = None
         labels_file = manifest.get("labels_file")
-        if labels_file and component_path:
-            src_labels = os.path.join(component_path, labels_file)
-            if os.path.isfile(src_labels):
-                labels_dir = os.path.join(self.snap_common_path, "labels")
-                os.makedirs(labels_dir, exist_ok=True)
-                dest_labels = os.path.join(labels_dir, f"{model_id}.txt")
+        if labels_file:
+            labels_dir = os.path.join(self.snap_common_path, "labels")
+            os.makedirs(labels_dir, exist_ok=True)
+            dest_labels = os.path.join(labels_dir, f"{model_id}.txt")
+
+            # Try local copy first
+            copied = False
+            if component_path:
+                src_labels = os.path.join(component_path, labels_file)
                 try:
                     shutil.copy2(src_labels, dest_labels)
-                    labels_path = dest_labels
+                    copied = True
                     logger.info("Copied labels to shared path: %s", dest_labels)
+                except (PermissionError, FileNotFoundError) as e:
+                    logger.warning("Cannot copy labels locally (%s), trying S3 fallback", e)
+
+            # S3 fallback
+            if not copied and self.comp_s3_bucket:
+                s3_key = f"{self.comp_s3_prefix}labels/{model_id}.txt"
+                try:
+                    s3_client = boto3.client("s3")
+                    s3_client.download_file(self.comp_s3_bucket, s3_key, dest_labels)
+                    copied = True
+                    logger.info("Downloaded labels from s3://%s/%s", self.comp_s3_bucket, s3_key)
                 except Exception as e:
-                    logger.warning("Failed to copy labels file: %s", e)
+                    logger.warning("Failed to download labels from S3: %s", e)
+
+            if copied:
+                labels_path = dest_labels
 
         model_metadata = {
             "model_name": manifest.get("model_name"),
