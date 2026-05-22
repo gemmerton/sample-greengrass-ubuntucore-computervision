@@ -41,6 +41,7 @@ class InferenceHandler:
         self.shadow_client = CloudShadowClient(self.thing_name, SHADOW_NAME)
         self.model_metadata = None
         self.active_model_id = None
+        self.labels = {}  # class_id -> label string, loaded from model's labels.txt
 
         logger.info(
             "InferenceHandler initialized: thing=%s camera=%s ovms=%s interval=%ss",
@@ -120,6 +121,7 @@ class InferenceHandler:
         logger.info("Active model changed: %s -> %s", self.active_model_id, model_id)
         self.active_model_id = model_id
         self.model_metadata = metadata
+        self._load_labels()
         self._report_and_clear_desired()
 
     def _report_and_clear_desired(self):
@@ -196,10 +198,12 @@ class InferenceHandler:
             logger.info("Active model changed: %s -> %s", self.active_model_id, target_model_id)
             self.active_model_id = target_model_id
             self.model_metadata = metadata
+            self._load_labels()
             logger.info("Model metadata: %s", json.dumps(metadata, indent=2))
             self._report_active_model()
         elif self.model_metadata is None:
             self.model_metadata = metadata
+            self._load_labels()
 
     def _report_active_model(self):
         self._report_and_clear_desired()
@@ -255,36 +259,67 @@ class InferenceHandler:
             self._publish(result_payload)
 
     def _preprocess(self, frame, input_shape):
+        dtype_str = self.model_metadata.get("input_dtype", "float32")
+        out_dtype = np.uint8 if dtype_str == "uint8" else np.float32
+
         if len(input_shape) == 4:
             _, c_or_h, h_or_w, w_or_c = input_shape
             if c_or_h <= 4:
+                # NCHW layout
                 target_h, target_w = h_or_w, w_or_c
                 resized = cv2.resize(frame, (target_w, target_h))
                 rgb = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
                 transposed = np.transpose(rgb, (2, 0, 1))
-                return np.expand_dims(transposed, axis=0).astype(np.float32)
+                return np.expand_dims(transposed, axis=0).astype(out_dtype)
             else:
+                # NHWC layout
                 target_h, target_w = c_or_h, h_or_w
                 resized = cv2.resize(frame, (target_w, target_h))
                 rgb = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
-                return np.expand_dims(rgb, axis=0).astype(np.float32)
+                return np.expand_dims(rgb, axis=0).astype(out_dtype)
         resized = cv2.resize(frame, (224, 224))
         rgb = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
-        return np.expand_dims(np.transpose(rgb, (2, 0, 1)), axis=0).astype(np.float32)
+        return np.expand_dims(np.transpose(rgb, (2, 0, 1)), axis=0).astype(out_dtype)
+
+    def _load_labels(self):
+        """Load labels from the model's labels.txt file."""
+        labels_file = self.model_metadata.get("labels_file")
+        local_path = self.model_metadata.get("local_path", "")
+        if not labels_file or not local_path:
+            self.labels = {}
+            return
+
+        component_dir = os.path.dirname(local_path.rstrip("/"))
+        labels_path = os.path.join(component_dir, labels_file)
+        if not os.path.isfile(labels_path):
+            labels_path = os.path.join(local_path, labels_file)
+        if not os.path.isfile(labels_path):
+            logger.warning("Labels file not found: %s", labels_file)
+            self.labels = {}
+            return
+
+        try:
+            with open(labels_path, "r") as f:
+                self.labels = {i: line.strip() for i, line in enumerate(f) if line.strip()}
+            logger.info("Loaded %d labels from %s", len(self.labels), labels_path)
+        except Exception as e:
+            logger.error("Failed to load labels from %s: %s", labels_path, e)
+            self.labels = {}
+
+    def _get_label(self, class_id):
+        return self.labels.get(class_id, f"class_{class_id}")
 
     def _postprocess(self, result, output_names, frame_width, frame_height, inference_time_ms):
         result_dict = self._normalize_result(result)
-        if "detection_out" in output_names or self._is_detection_output(result_dict):
-            return self._postprocess_detection(result_dict, frame_width, frame_height, inference_time_ms)
-        else:
-            return self._postprocess_classification(result_dict, inference_time_ms)
 
-    # Known labels for demo models. In production, these would come from labels
-    # files bundled with the model component.
-    DETECTION_LABELS = {0: "background", 1: "person"}
-
-    def _get_label(self, class_id):
-        return self.DETECTION_LABELS.get(class_id, f"class_{class_id}")
+        # Auto-detect output format:
+        # Format 1: OpenVINO zoo single-tensor [1,1,N,7] (detection_out)
+        # Format 2: TF2 multi-tensor (detection_boxes, detection_scores, detection_classes)
+        if self._is_tf2_detection_output(result_dict):
+            return self._postprocess_tf2_detection(result_dict, frame_width, frame_height, inference_time_ms)
+        if "detection_out" in output_names or self._is_ov_detection_output(result_dict):
+            return self._postprocess_ov_detection(result_dict, frame_width, frame_height, inference_time_ms)
+        return self._postprocess_classification(result_dict, inference_time_ms)
 
     @staticmethod
     def _normalize_result(result):
@@ -294,20 +329,28 @@ class InferenceHandler:
             return {"output": result}
         return {"output": np.array(result)}
 
-    def _is_detection_output(self, result_dict):
-        for key, val in result_dict.items():
+    def _is_ov_detection_output(self, result_dict):
+        for val in result_dict.values():
             if hasattr(val, 'shape') and len(val.shape) == 4 and val.shape[2] > 1 and val.shape[3] == 7:
                 return True
         return False
 
-    def _postprocess_detection(self, result_dict, frame_width, frame_height, inference_time_ms):
+    @staticmethod
+    def _is_tf2_detection_output(result_dict):
+        keys = set(result_dict.keys())
+        return "detection_boxes" in keys and "detection_scores" in keys and "detection_classes" in keys
+
+    def _postprocess_ov_detection(self, result_dict, frame_width, frame_height, inference_time_ms):
+        """Parse OpenVINO zoo format: single tensor with shape [1, 1, N, 7].
+        Each row: [image_id, label_id, confidence, xmin, ymin, xmax, ymax]
+        """
         output = None
-        for key, val in result_dict.items():
+        for val in result_dict.values():
             if hasattr(val, 'shape') and len(val.shape) == 4 and val.shape[3] == 7:
                 output = val
                 break
         if output is None:
-            for key, val in result_dict.items():
+            for val in result_dict.values():
                 output = val
                 break
         if output is None:
@@ -326,15 +369,57 @@ class InferenceHandler:
             ymin = float(np.clip(det[4], 0, 1))
             xmax = float(np.clip(det[5], 0, 1))
             ymax = float(np.clip(det[6], 0, 1))
-            label = self._get_label(label_id)
             detections.append({
-                "label": label,
+                "label": self._get_label(label_id),
                 "score": round(confidence, 4),
                 "box": {
                     "xmin": round(xmin, 4),
                     "ymin": round(ymin, 4),
                     "xmax": round(xmax, 4),
                     "ymax": round(ymax, 4),
+                },
+            })
+
+        if not detections:
+            return None
+
+        return {
+            "timestamp": time.time(),
+            "model_id": self.active_model_id,
+            "model_name": self.model_metadata.get("model_name", ""),
+            "result_type": "detection",
+            "results": {"detections": detections, "count": len(detections)},
+            "inference_time_ms": inference_time_ms,
+            "frame_width": frame_width,
+            "frame_height": frame_height,
+            "confidence_threshold": self.confidence_threshold,
+        }
+
+    def _postprocess_tf2_detection(self, result_dict, frame_width, frame_height, inference_time_ms):
+        """Parse TF2 model zoo format: separate tensors for boxes, scores, classes.
+        detection_boxes: [1, N, 4] normalized (ymin, xmin, ymax, xmax)
+        detection_scores: [1, N]
+        detection_classes: [1, N]
+        """
+        boxes = np.squeeze(result_dict["detection_boxes"])
+        scores = np.squeeze(result_dict["detection_scores"])
+        classes = np.squeeze(result_dict["detection_classes"])
+
+        detections = []
+        for i in range(len(scores)):
+            confidence = float(scores[i])
+            if confidence < self.confidence_threshold:
+                continue
+            label_id = int(classes[i])
+            ymin, xmin, ymax, xmax = boxes[i]
+            detections.append({
+                "label": self._get_label(label_id),
+                "score": round(confidence, 4),
+                "box": {
+                    "xmin": round(float(np.clip(xmin, 0, 1)), 4),
+                    "ymin": round(float(np.clip(ymin, 0, 1)), 4),
+                    "xmax": round(float(np.clip(xmax, 0, 1)), 4),
+                    "ymax": round(float(np.clip(ymax, 0, 1)), 4),
                 },
             })
 

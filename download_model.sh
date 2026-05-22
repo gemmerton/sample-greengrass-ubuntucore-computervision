@@ -1,51 +1,73 @@
 #!/bin/bash
 
-# Download and prepare OpenVINO IR models for the ovms-engine snap components.
-# Downloads Faster R-CNN (object detection) and prepares it in OpenVINO IR format
-# for packaging as a snap component.
+# Download and convert Faster R-CNN ResNet50 v1 (COCO 90-class) to OpenVINO IR format
+# for the ovms-engine snap model component.
+#
+# This model detects 90 object categories (person, car, bicycle, dog, chair, etc.)
+# and outputs in the TF2 multi-tensor detection format.
+#
+# Prerequisites:
+#   pip install openvino openvino-dev[tensorflow2] tensorflow
+#
+# Output files go into ovms-engine/components/model-faster-rcnn/1/
+# which is the OVMS model repository layout (model_name/version/model.xml+bin)
 
 set -e
 
 COMPONENT_DIR="ovms-engine/components/model-faster-rcnn"
-TEMP_DIR="temp_model"
+MODEL_DIR="$COMPONENT_DIR/1"
+TEMP_DIR="temp_model_download"
 
-echo "Downloading Faster R-CNN model from Kaggle..."
+echo "=== Faster R-CNN ResNet50 v1 640x640 (COCO 90-class) ==="
+echo ""
 
 # Create directories
-mkdir -p "$COMPONENT_DIR"
+mkdir -p "$MODEL_DIR"
 mkdir -p "$TEMP_DIR"
 
-# Download model
-curl -L --create-dirs \
+# Step 1: Download
+echo "Step 1: Downloading model from Kaggle..."
+curl -L --progress-bar \
     https://www.kaggle.com/api/v1/models/tensorflow/faster-rcnn-resnet-v1/tensorFlow2/faster-rcnn-resnet50-v1-640x640/1/download \
     -o "$TEMP_DIR/model.tar.gz"
 
-# Extract model
+# Step 2: Extract
+echo "Step 2: Extracting..."
 tar xzf "$TEMP_DIR/model.tar.gz" -C "$TEMP_DIR"
 
-# Copy OpenVINO IR files to the snap component directory
-# After conversion to IR format, the files are model.xml and model.bin
-# For this demo, placeholder .xml/.bin files exist in the component directory.
-# Replace them with actual converted IR files:
-#
-#   pip install openvino-dev
-#   mo --saved_model_dir temp_model/saved_model --output_dir ovms-engine/components/model-faster-rcnn/
-#
-echo "Model downloaded to $TEMP_DIR/"
-echo ""
-echo "Next steps:"
-echo "  1. Convert to OpenVINO IR format:"
-echo "     mo --saved_model_dir $TEMP_DIR/saved_model --output_dir $COMPONENT_DIR/"
-echo ""
-echo "  2. Verify the component directory contains:"
-echo "     $COMPONENT_DIR/model.xml"
-echo "     $COMPONENT_DIR/model.bin"
-echo "     $COMPONENT_DIR/manifest.json"
-echo "     $COMPONENT_DIR/labels.txt"
-echo "     $COMPONENT_DIR/component.yaml"
+# Step 3: Convert to OpenVINO IR
+echo "Step 3: Converting to OpenVINO IR format with ovc..."
+ovc "$TEMP_DIR/saved_model" \
+    --output_model "$MODEL_DIR/saved_model"
 
-# Clean up
+# Step 4: Verify
+echo ""
+echo "Step 4: Verifying output..."
+if [ -f "$MODEL_DIR/saved_model.xml" ] && [ -f "$MODEL_DIR/saved_model.bin" ]; then
+    echo "  $MODEL_DIR/saved_model.xml ($(du -h "$MODEL_DIR/saved_model.xml" | cut -f1))"
+    echo "  $MODEL_DIR/saved_model.bin ($(du -h "$MODEL_DIR/saved_model.bin" | cut -f1))"
+    echo ""
+    echo "Conversion successful."
+else
+    echo "ERROR: Expected output files not found."
+    echo "Ensure openvino-dev is installed: pip install openvino-dev[tensorflow2]"
+    rm -rf "$TEMP_DIR"
+    exit 1
+fi
+
+# Clean up temp download
 rm -rf "$TEMP_DIR"
 
 echo ""
-echo "Done."
+echo "=== Done ==="
+echo ""
+echo "Component directory: $COMPONENT_DIR/"
+echo "  manifest.json         - model metadata (NHWC uint8 640x640, TF2 output format)"
+echo "  labels.txt            - COCO 91-class labels (index 0 = background)"
+echo "  1/saved_model.xml     - OpenVINO IR graph"
+echo "  1/saved_model.bin     - OpenVINO IR weights"
+echo ""
+echo "Next steps:"
+echo "  1. Rebuild the ovms-engine snap to include this model component"
+echo "  2. Install the snap on the device: sudo snap install ovms-engine+model-faster-rcnn.snap --devmode"
+echo "  3. Add 'faster-rcnn' to desired.models in the shadow with type: 'cv'"
