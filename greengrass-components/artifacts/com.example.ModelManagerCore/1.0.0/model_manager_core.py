@@ -130,15 +130,14 @@ class ModelManagerCore:
             # The delta contains the desired state fields that differ from reported
             state = delta.get("state", {})
 
-            # active_model is handled by InferenceHandler, not here
-            if "active_model" in state and "models" not in state:
-                logger.debug("Delta only contains active_model (handled by InferenceHandler), ignoring")
-                return
+            # If active_model changed, regenerate OVMS config for the new model
+            if "active_model" in state:
+                logger.info("Active model change detected: %s", state["active_model"])
+                self._regenerate_ovms_config()
 
             desired_models = state.get("models", {})
 
             if not desired_models and "models" not in state:
-                logger.debug("Delta does not contain models field, ignoring")
                 return
 
             self._reconcile_models(desired_models)
@@ -1186,37 +1185,35 @@ class ModelManagerCore:
         logger.info("Model '%s' removal complete", model_id)
 
     def _regenerate_ovms_config(self):
-        """Regenerate the OVMS multi-model config with all ready models.
+        """Regenerate the OVMS config with only the active model.
 
-        Iterates over self.reported_models, filters for models with status 'ready',
-        and writes a models_config.json listing each ready model's name and base_path.
-        OVMS auto-reloads via --file_system_poll_wait_seconds when the file changes.
-
-        Requirements: 4.1, 4.2, 4.3
+        Reads the active model from the shadow reported state and writes
+        a models_config.json containing only that model. OVMS auto-reloads
+        via --file_system_poll_wait_seconds when the file changes.
         """
+        # Determine active model from shadow
+        shadow = self.shadow_client.get_shadow()
+        reported = shadow.get("state", {}).get("reported", {})
+        desired = shadow.get("state", {}).get("desired", {})
+        active_model_id = reported.get("active_model") or desired.get("active_model")
+
         ready_models = []
-        for model_id, model_entry in self.reported_models.items():
-            if not isinstance(model_entry, dict):
-                continue
-            if model_entry.get("status") != "ready":
-                continue
-            if model_entry.get("type") == "vlm":
-                continue
-            metadata = model_entry.get("model_metadata", {})
-            if not isinstance(metadata, dict):
-                continue
-            model_name = metadata.get("model_name")
-            local_path = metadata.get("local_path")
-            if model_name and local_path:
-                ready_models.append({
-                    "name": model_name,
-                    "base_path": local_path,
-                })
+        if active_model_id:
+            model_entry = self.reported_models.get(active_model_id, {})
+            if isinstance(model_entry, dict) and model_entry.get("status") == "ready" and model_entry.get("type") != "vlm":
+                metadata = model_entry.get("model_metadata", {})
+                if isinstance(metadata, dict):
+                    model_name = metadata.get("model_name")
+                    local_path = metadata.get("local_path")
+                    if model_name and local_path:
+                        ready_models.append({
+                            "name": model_name,
+                            "base_path": local_path,
+                        })
 
         logger.info(
-            "Regenerating OVMS config with %d ready model(s): %s",
-            len(ready_models),
-            [m["name"] for m in ready_models],
+            "Regenerating OVMS config with active model: %s",
+            [m["name"] for m in ready_models] if ready_models else "none",
         )
 
         try:
