@@ -15,6 +15,7 @@ set -e
 
 PERSON_DET_DIR="ovms-engine/components/model-person-detection/1"
 FASTER_RCNN_DIR="ovms-engine/components/model-faster-rcnn/1"
+EFFICIENTNET_DIR="ovms-engine/components/model-efficientnet/1"
 TEMP_DIR="temp_model_download"
 
 echo "=== Model Download and Conversion ==="
@@ -22,6 +23,7 @@ echo ""
 
 mkdir -p "$PERSON_DET_DIR"
 mkdir -p "$FASTER_RCNN_DIR"
+mkdir -p "$EFFICIENTNET_DIR"
 mkdir -p "$TEMP_DIR"
 
 # ─── Model 1: Person Detection (Intel Model Zoo) ────────────────────────────
@@ -79,6 +81,28 @@ else
     exit 1
 fi
 
+# ─── Model 3: Age/Gender Recognition (Intel Model Zoo) ────────────────────────
+
+echo "─── [3/3] Age/Gender Recognition (age-gender-recognition-retail-0013) ───"
+echo ""
+
+EFFICIENTNET_URL="https://storage.openvinotoolkit.org/repositories/open_model_zoo/2023.0/models_bin/1/age-gender-recognition-retail-0013/FP32"
+
+echo "Downloading model files..."
+curl -L --progress-bar "$EFFICIENTNET_URL/age-gender-recognition-retail-0013.xml" -o "$EFFICIENTNET_DIR/saved_model.xml"
+curl -L --progress-bar "$EFFICIENTNET_URL/age-gender-recognition-retail-0013.bin" -o "$EFFICIENTNET_DIR/saved_model.bin"
+
+if [ -f "$EFFICIENTNET_DIR/saved_model.xml" ] && [ -f "$EFFICIENTNET_DIR/saved_model.bin" ]; then
+    echo "  $EFFICIENTNET_DIR/saved_model.xml ($(du -h "$EFFICIENTNET_DIR/saved_model.xml" | cut -f1))"
+    echo "  $EFFICIENTNET_DIR/saved_model.bin ($(du -h "$EFFICIENTNET_DIR/saved_model.bin" | cut -f1))"
+    echo "  Done."
+else
+    echo "ERROR: Age/Gender model download failed."
+    exit 1
+fi
+
+echo ""
+
 # ─── Clean up ────────────────────────────────────────────────────────────────
 
 rm -rf "$TEMP_DIR"
@@ -97,4 +121,8 @@ echo "    manifest.json  - 90-class COCO detection, [1,640,640,3] NHWC, uint8"
 echo "    labels.txt     - 91 COCO classes"
 echo "    1/saved_model.xml + .bin"
 echo ""
-echo "Next: run 'snapcraft' in ovms-engine/ to build the snap with both model components."
+echo "  ovms-engine/components/model-efficientnet/"
+echo "    manifest.json  - age/gender classification, [1,3,62,62] NCHW, float32"
+echo "    1/saved_model.xml + .bin"
+echo ""
+echo "Next: run 'snapcraft' in ovms-engine/ to build the snap with all model components."

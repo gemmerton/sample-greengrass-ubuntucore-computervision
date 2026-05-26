@@ -452,7 +452,7 @@ class InferenceHandler:
             if conf < self.confidence_threshold:
                 continue
             classifications.append({
-                "label": f"class_{idx}",
+                "label": self._get_label(int(idx)),
                 "confidence": round(conf, 4),
                 "class_index": int(idx),
             })

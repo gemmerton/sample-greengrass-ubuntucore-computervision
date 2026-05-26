@@ -133,7 +133,7 @@ class ModelManagerCore:
             # If active_model changed, regenerate OVMS config for the new model
             if "active_model" in state:
                 logger.info("Active model change detected: %s", state["active_model"])
-                self._regenerate_ovms_config()
+                self._handle_active_model(state["active_model"])
 
             desired_models = state.get("models", {})
 
@@ -768,8 +768,9 @@ class ModelManagerCore:
             model_entry: The model's inventory entry (dict).
             reported: The current reported state dictionary.
         """
-        # Extract model path from the entry
-        model_path = model_entry.get("local_path", "") if isinstance(model_entry, dict) else ""
+        # Extract model path from model_metadata within the entry
+        metadata = model_entry.get("model_metadata", {}) if isinstance(model_entry, dict) else {}
+        model_path = metadata.get("local_path", "") if isinstance(metadata, dict) else ""
 
         if not model_path:
             logger.error(
@@ -786,6 +787,12 @@ class ModelManagerCore:
         # Strip trailing slash for OVMS config base_path
         base_path = model_path.rstrip('/')
 
+        # Use the model_name from metadata (what OVMS and InferenceHandler expect)
+        ovms_model_name = metadata.get("model_name", model_id)
+
+        # Ensure labels file is available in the shared writable area
+        self._ensure_labels_available(model_id, base_path, metadata)
+
         # Step 1: Save current OVMS config as backup for rollback
         backup_config = read_model_config(self.ovms_config_dir)
         logger.info("Saved backup OVMS config for rollback")
@@ -793,7 +800,7 @@ class ModelManagerCore:
         # Step 2: Write new OVMS configuration (Requirement 5.2)
         try:
             write_model_config(
-                model_name=model_id,
+                model_name=ovms_model_name,
                 base_path=base_path,
                 config_dir=self.ovms_config_dir,
             )
@@ -812,7 +819,7 @@ class ModelManagerCore:
 
         # Step 3: Poll OVMS gRPC ModelStatus API (Requirement 5.3)
         model_loaded = self._poll_ovms_model_status(
-            model_name=model_id,
+            model_name=ovms_model_name,
             timeout_seconds=60,
             poll_interval=2,
         )
@@ -828,6 +835,15 @@ class ModelManagerCore:
             reported["active_model"] = model_id
             if model_metadata:
                 reported["model_metadata"] = model_metadata
+
+            # Ensure labels_file is recorded in the model's inventory entry
+            if metadata.get("labels_file"):
+                models = reported.get("models", {})
+                if model_id in models and isinstance(models[model_id], dict):
+                    model_meta = models[model_id].get("model_metadata", {})
+                    if isinstance(model_meta, dict):
+                        model_meta["labels_file"] = metadata["labels_file"]
+                        models[model_id]["model_metadata"] = model_meta
 
             self._update_shadow_reported_state(reported)
 
@@ -1044,6 +1060,50 @@ class ModelManagerCore:
                     f.write("\n")
             except OSError as e:
                 logger.error("Failed to write empty OVMS config: %s", e)
+
+    def _ensure_labels_available(self, model_id, component_path, metadata):
+        """Ensure the labels file exists in the shared writable area.
+
+        On model switch, the labels file may not exist if:
+        - The model was installed before labels were added to the component
+        - The shared area was cleared (e.g. snap refresh)
+        - The component didn't include labels at install time
+
+        Attempts to copy from the component path first, then falls back to S3.
+        Updates metadata["labels_file"] with the destination path if successful.
+        """
+        labels_dir = os.path.join(self.snap_common_path, "labels")
+        dest_labels = os.path.join(labels_dir, f"{model_id}.txt")
+
+        if os.path.isfile(dest_labels):
+            if not metadata.get("labels_file"):
+                metadata["labels_file"] = dest_labels
+            return
+
+        # Try copying from the component's labels.txt
+        src_labels = os.path.join(component_path, "labels.txt")
+        try:
+            if os.path.isfile(src_labels):
+                os.makedirs(labels_dir, exist_ok=True)
+                shutil.copy2(src_labels, dest_labels)
+                metadata["labels_file"] = dest_labels
+                logger.info("Copied labels to shared path: %s", dest_labels)
+                return
+        except (PermissionError, FileNotFoundError, OSError) as e:
+            logger.warning("Cannot copy labels from component (%s), trying S3", e)
+
+        # S3 fallback
+        if self.comp_s3_bucket:
+            s3_key = f"{self.comp_s3_prefix}labels/{model_id}.txt"
+            try:
+                os.makedirs(labels_dir, exist_ok=True)
+                s3_client = boto3.client("s3")
+                s3_client.download_file(self.comp_s3_bucket, s3_key, dest_labels)
+                metadata["labels_file"] = dest_labels
+                logger.info("Downloaded labels from s3://%s/%s", self.comp_s3_bucket, s3_key)
+                return
+            except Exception as e:
+                logger.warning("Failed to download labels from S3: %s", e)
 
     def _read_model_metadata(self, model_path):
         """Read model metadata from manifest.json at the given path.
