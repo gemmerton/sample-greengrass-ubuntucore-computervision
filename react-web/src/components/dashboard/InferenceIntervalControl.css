@@ -1,0 +1,127 @@
+.inference-interval {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.inference-interval__label {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+  letter-spacing: var(--letter-spacing-wide);
+}
+
+.inference-interval__body {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  flex-wrap: wrap;
+}
+
+.inference-interval__slider-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  flex: 1;
+  min-width: 200px;
+}
+
+.inference-interval__bound {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-tertiary);
+  white-space: nowrap;
+  font-family: var(--font-family-mono);
+}
+
+.inference-interval__slider {
+  flex: 1;
+  accent-color: var(--color-primary);
+  cursor: pointer;
+  height: 4px;
+}
+
+.inference-interval__slider:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.inference-interval__value {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-primary);
+  min-width: 2.5rem;
+  text-align: right;
+  font-family: var(--font-family-mono);
+}
+
+.inference-interval__apply {
+  padding: var(--spacing-sm) var(--spacing-lg);
+  background: var(--color-surface-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius-md);
+  color: var(--color-text-tertiary);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  cursor: not-allowed;
+  white-space: nowrap;
+  min-height: 36px;
+  transition: all var(--transition-fast);
+}
+
+.inference-interval__apply--changed {
+  background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-dark) 100%);
+  border-color: var(--color-primary);
+  color: var(--color-text-inverse);
+  cursor: pointer;
+  box-shadow: var(--shadow-glow);
+}
+
+.inference-interval__apply--changed:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 0 24px rgba(255, 153, 0, 0.3);
+}
+
+.inference-interval__apply:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.inference-interval__hint {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-tertiary);
+  font-style: italic;
+  margin: 0;
+}
+
+.inference-interval__error {
+  font-size: var(--font-size-xs);
+  color: var(--color-error);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-left: 3px solid var(--color-error);
+  border-radius: var(--border-radius-sm);
+  background: var(--color-error-light);
+}
+
+.inference-interval__applied {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  margin: 0;
+}
+
+.inference-interval__applied strong {
+  color: var(--color-primary);
+  font-weight: var(--font-weight-bold);
+}
+
+@media (max-width: 640px) {
+  .inference-interval__body {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .inference-interval__apply {
+    width: 100%;
+    text-align: center;
+  }
+}

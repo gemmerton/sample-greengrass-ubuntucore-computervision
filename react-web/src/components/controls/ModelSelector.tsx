@@ -251,16 +251,12 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
 
   // --- All hooks are above this line. Conditional returns below. ---
 
-  // When thingName is empty, display hint message
   if (!thingName) {
     return (
       <div className={`model-selector ${className}`} role="group" aria-labelledby="model-selector-label">
         <label id="model-selector-label" className="model-selector__label">
           CV Model
         </label>
-        <p className="model-selector__hint">
-          Set an IoT Thing Name above to enable model selection.
-        </p>
       </div>
     );
   }

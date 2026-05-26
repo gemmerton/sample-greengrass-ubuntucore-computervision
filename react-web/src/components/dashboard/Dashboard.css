@@ -561,6 +561,13 @@
   display: block;
 }
 
+.dashboard__panel-hint {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-tertiary);
+  font-style: italic;
+  margin: 0 0 var(--spacing-sm) 0;
+}
+
 /* ─── Responsive ─────────────────────────────────────────────────────── */
 
 @media (max-width: 1024px) {

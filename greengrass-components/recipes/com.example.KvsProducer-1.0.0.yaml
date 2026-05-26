@@ -8,9 +8,6 @@ ComponentDescription: >
   time-window model, and publishes inference snapshots to camera/images.
 ComponentPublisher: AWS
 ComponentDependencies:
-  com.example.DetectionHandler:
-    VersionRequirement: '^1.0.0'
-    DependencyType: SOFT
   aws.greengrass.TokenExchangeService:
     VersionRequirement: '^2.0.0'
     DependencyType: HARD
@@ -43,12 +40,11 @@ ComponentConfiguration:
             - 'camera/images'
       aws.greengrass.ipc.mqttproxy:
         com.example.KvsProducer:mqttproxy:1:
-          policyDescription: 'Subscribe to detection results and shadow delta; publish health metrics'
+          policyDescription: 'Subscribe to shadow delta; publish health metrics'
           operations:
             - 'aws.greengrass#SubscribeToIoTCore'
             - 'aws.greengrass#PublishToIoTCore'
           resources:
-            - 'camera/detections'
             - 'camera/kvs-status'
             - '$aws/things/*/shadow/name/kvs-config/update/delta'
 Manifests:
@@ -120,8 +116,6 @@ Manifests:
           python3 {artifacts:path}/kvs_producer.py'
     Artifacts:
       - Uri: kvs_producer.py
-        Unarchive: NONE
-      - Uri: frame_annotator.py
         Unarchive: NONE
       - Uri: gstreamer_pipeline.py
         Unarchive: NONE

@@ -1,33 +1,32 @@
-/**
- * ConfidenceThresholdControl - Slider to set the inference confidence threshold via IoT Device Shadow
- */
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { iotShadowService } from '../../services/iotShadowService';
 import { useAuthenticatedAWS } from '../../hooks/useAuthenticatedAWS';
-import './ConfidenceThresholdControl.css';
+import './InferenceIntervalControl.css';
 
-export interface ConfidenceThresholdControlProps {
+export interface InferenceIntervalControlProps {
   className?: string;
   thingName: string;
 }
 
-export const ConfidenceThresholdControl: React.FC<ConfidenceThresholdControlProps> = ({
+const MIN_INTERVAL = 1;
+const MAX_INTERVAL = 30;
+const DEFAULT_INTERVAL = 1;
+
+export const InferenceIntervalControl: React.FC<InferenceIntervalControlProps> = ({
   className = '',
   thingName,
 }) => {
   const { credentials, region } = useAuthenticatedAWS();
-  const [sliderValue, setSliderValue] = useState<number>(0.5);
+  const [sliderValue, setSliderValue] = useState<number>(DEFAULT_INTERVAL);
   const [appliedValue, setAppliedValue] = useState<number | null>(null);
   const [status, setStatus] = useState<'idle' | 'loading' | 'saving' | 'saved' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState<string>('');
 
-  // Load current threshold from shadow when thingName is set
   useEffect(() => {
     if (!thingName || !credentials) return;
 
     setStatus('loading');
-    iotShadowService.getConfidenceThreshold(thingName, credentials, region)
+    iotShadowService.getInferenceInterval(thingName, credentials, region)
       .then((value) => {
         if (value !== null) {
           setSliderValue(value);
@@ -36,9 +35,9 @@ export const ConfidenceThresholdControl: React.FC<ConfidenceThresholdControlProp
         setStatus('idle');
       })
       .catch((err) => {
-        console.error('Failed to read confidence threshold from shadow:', err);
+        console.error('Failed to read inference interval from shadow:', err);
         setStatus('error');
-        setErrorMessage('Failed to read current threshold from device shadow.');
+        setErrorMessage('Failed to read current interval from device shadow.');
       });
   }, [thingName, credentials, region]);
 
@@ -47,12 +46,12 @@ export const ConfidenceThresholdControl: React.FC<ConfidenceThresholdControlProp
     setStatus('saving');
     setErrorMessage('');
     try {
-      await iotShadowService.setConfidenceThreshold(thingName, credentials, region, sliderValue);
+      await iotShadowService.setInferenceInterval(thingName, credentials, region, sliderValue);
       setAppliedValue(sliderValue);
       setStatus('saved');
       setTimeout(() => setStatus('idle'), 2000);
     } catch (err: any) {
-      console.error('Failed to update confidence threshold:', err);
+      console.error('Failed to update inference interval:', err);
       setStatus('error');
       setErrorMessage(err?.message || 'Failed to update device shadow.');
     }
@@ -62,52 +61,52 @@ export const ConfidenceThresholdControl: React.FC<ConfidenceThresholdControlProp
   const hasChanged = appliedValue === null || sliderValue !== appliedValue;
 
   return (
-    <div className={`confidence-threshold ${className}`} role="group" aria-labelledby="confidence-threshold-label">
-      <label id="confidence-threshold-label" className="confidence-threshold__label">
-        Confidence Threshold
+    <div className={`inference-interval ${className}`} role="group" aria-labelledby="inference-interval-label">
+      <label id="inference-interval-label" className="inference-interval__label">
+        Inference Interval
       </label>
 
-      <div className="confidence-threshold__body">
-        <div className="confidence-threshold__slider-row">
-          <span className="confidence-threshold__bound">0.0</span>
+      <div className="inference-interval__body">
+        <div className="inference-interval__slider-row">
+          <span className="inference-interval__bound">{MIN_INTERVAL}s</span>
           <input
             type="range"
-            className="confidence-threshold__slider"
-            min={0}
-            max={1}
-            step={0.05}
+            className="inference-interval__slider"
+            min={MIN_INTERVAL}
+            max={MAX_INTERVAL}
+            step={1}
             value={sliderValue}
-            onChange={(e) => setSliderValue(parseFloat(e.target.value))}
+            onChange={(e) => setSliderValue(parseInt(e.target.value, 10))}
             disabled={isDisabled}
-            aria-label="Confidence threshold slider"
-            aria-valuemin={0}
-            aria-valuemax={1}
+            aria-label="Inference interval slider"
+            aria-valuemin={MIN_INTERVAL}
+            aria-valuemax={MAX_INTERVAL}
             aria-valuenow={sliderValue}
           />
-          <span className="confidence-threshold__bound">1.0</span>
-          <span className="confidence-threshold__value">{sliderValue.toFixed(2)}</span>
+          <span className="inference-interval__bound">{MAX_INTERVAL}s</span>
+          <span className="inference-interval__value">{sliderValue}s</span>
         </div>
 
         <button
           type="button"
-          className={`confidence-threshold__apply${hasChanged ? ' confidence-threshold__apply--changed' : ''}`}
+          className={`inference-interval__apply${hasChanged ? ' inference-interval__apply--changed' : ''}`}
           onClick={handleApply}
           disabled={isDisabled || !hasChanged}
-          aria-label="Apply confidence threshold"
+          aria-label="Apply inference interval"
         >
           {status === 'saving' ? 'Applying...' : status === 'saved' ? 'Applied' : 'Apply'}
         </button>
       </div>
 
       {status === 'error' && (
-        <div className="confidence-threshold__error" role="alert">
+        <div className="inference-interval__error" role="alert">
           {errorMessage}
         </div>
       )}
 
       {appliedValue !== null && status !== 'error' && (
-        <p className="confidence-threshold__applied">
-          Device threshold: <strong>{appliedValue.toFixed(2)}</strong>
+        <p className="inference-interval__applied">
+          Device interval: <strong>{appliedValue}s</strong>
         </p>
       )}
     </div>

@@ -45,12 +45,10 @@ describe('ModelSelector Rendering', () => {
   });
 
   describe('Pre-condition states', () => {
-    test('renders Thing Name required hint when thingName is empty', () => {
+    test('renders label only when thingName is empty', () => {
       render(<ModelSelector thingName="" />);
 
-      expect(
-        screen.getByText(/Set an IoT Thing Name above to enable model selection/i)
-      ).toBeInTheDocument();
+      expect(screen.getByText('CV Model')).toBeInTheDocument();
     });
 
     test('renders loading state when credentials are null', () => {

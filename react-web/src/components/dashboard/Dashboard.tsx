@@ -18,6 +18,7 @@ import { MessageFeed } from './MessageFeed';
 import { MqttTopicInput } from './MqttTopicInput';
 import { ThingNameInput } from './ThingNameInput';
 import { ConfidenceThresholdControl } from './ConfidenceThresholdControl';
+import { InferenceIntervalControl } from './InferenceIntervalControl';
 import { ModelSelector } from '../controls/ModelSelector';
 import { VlmModelSelector } from '../controls/VlmModelSelector';
 import { S3Provider } from '../../contexts/S3Context';
@@ -209,9 +210,15 @@ const DashboardContent: React.FC<DashboardProps> = ({
           </div>
           <div className={`dashboard__panel-page ${activeLeftPanel === 'cv' ? 'dashboard__panel-page--active' : ''}`}>
             <div className="dashboard__settings-section">
+              {!thingName && (
+                <p className="dashboard__panel-hint">Set an IoT Thing Name in General settings to enable these controls.</p>
+              )}
               <div className="dashboard__settings-stack">
                 <div className="dashboard__settings-field">
                   <ConfidenceThresholdControl thingName={thingName} />
+                </div>
+                <div className="dashboard__settings-field">
+                  <InferenceIntervalControl thingName={thingName} />
                 </div>
                 <div className="dashboard__settings-field">
                   <ModelSelector thingName={thingName} />
@@ -221,6 +228,9 @@ const DashboardContent: React.FC<DashboardProps> = ({
           </div>
           <div className={`dashboard__panel-page ${activeLeftPanel === 'vlm' ? 'dashboard__panel-page--active' : ''}`}>
             <div className="dashboard__settings-section">
+              {!thingName && (
+                <p className="dashboard__panel-hint">Set an IoT Thing Name in General settings to enable these controls.</p>
+              )}
               <div className="dashboard__settings-stack">
                 <div className="dashboard__settings-field">
                   <VlmModelSelector thingName={thingName} />

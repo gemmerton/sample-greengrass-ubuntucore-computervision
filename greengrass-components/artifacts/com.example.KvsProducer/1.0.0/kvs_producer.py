@@ -3,13 +3,10 @@ import os, sys, json, time, logging, datetime, threading, glob
 from dataclasses import replace
 import numpy as np
 import awsiot.greengrasscoreipc.clientv2 as clientv2
-from awsiot.greengrasscoreipc.model import (
-    PublishMessage, JsonMessage, SubscriptionResponseMessage
-)
+from awsiot.greengrasscoreipc.model import PublishMessage, JsonMessage
 
 from shadow_config import ShadowConfigManager, DEFAULT_CONFIG, KvsConfig
 from health_monitor import HealthMonitor
-from frame_annotator import FrameAnnotator, Detection, DetectionBox
 from gstreamer_pipeline import CapturePipeline, EncodingPipeline, TesCredentialProvider
 
 logger = logging.getLogger(__name__)
@@ -36,8 +33,6 @@ class KvsProducer:
         self._shadow_mgr = ShadowConfigManager(self._ipc_client, self._thing_name)
         self._health_monitor = HealthMonitor(self._ipc_client)
         self._config = DEFAULT_CONFIG
-        self._annotator = FrameAnnotator(
-            staleness_window_seconds=self._config.staleness_window_seconds)
         work_path = os.path.dirname(self._output_directory)
         self._credential_path = os.path.join(work_path, "kvs_credentials")
         self._credential_provider = TesCredentialProvider(self._credential_path)
@@ -61,7 +56,6 @@ class KvsProducer:
         if not self._credential_provider.start():
             logger.error("Failed to fetch TES credentials; aborting")
             sys.exit(1)
-        self._subscribe_to_detections()
         self._subscribe_to_shadow_delta()
         self._start_pipelines()
         logger.info("KvsProducer running, streaming to %s", self._config.stream_name)
@@ -140,11 +134,9 @@ class KvsProducer:
     def _on_raw_frame(self, frame: np.ndarray, frame_time: float):
         with self._state_lock:
             streaming_enabled = self._config.streaming_enabled
-            annotator = self._annotator
         if not streaming_enabled:
             return
-        annotated = annotator.annotate(frame, frame_time)
-        if self._encoding_pipeline and self._encoding_pipeline.push_frame(annotated):
+        if self._encoding_pipeline and self._encoding_pipeline.push_frame(frame):
             self._health_monitor.record_frame_sent()
             self._last_frame_sent_time = frame_time
             self._health_monitor.set_status("streaming")
@@ -175,35 +167,6 @@ class KvsProducer:
             except OSError:
                 pass
 
-    def _subscribe_to_detections(self):
-        try:
-            self._ipc_client.subscribe_to_iot_core(
-                topic_name="camera/detections",
-                qos="1",
-                on_stream_event=self._on_detection_message,
-                on_stream_error=lambda e: logger.warning("Detection stream error: %s", e),
-                on_stream_closed=lambda: logger.info("Detection stream closed"),
-            )
-        except Exception as e:
-            logger.error("Failed to subscribe to camera/detections: %s", e)
-
-    def _on_detection_message(self, event):
-        try:
-            payload = json.loads(event.message.payload)
-            detections = [
-                Detection(
-                    label=d["label"], score=d["score"],
-                    box=DetectionBox(
-                        ymin=d["box"]["ymin"], xmin=d["box"]["xmin"],
-                        ymax=d["box"]["ymax"], xmax=d["box"]["xmax"]))
-                for d in payload.get("detections", [])
-            ]
-            with self._state_lock:
-                annotator = self._annotator
-            annotator.update_detections(detections, time.time())
-        except Exception as e:
-            logger.warning("Failed to parse detection message: %s", e)
-
     def _subscribe_to_shadow_delta(self):
         delta_topic = (
             f"$aws/things/{self._thing_name}/shadow/name/kvs-config/update/delta"
@@ -230,8 +193,6 @@ class KvsProducer:
             with self._state_lock:
                 old_config = self._config
                 self._config = new_config
-                self._annotator = FrameAnnotator(
-                    staleness_window_seconds=new_config.staleness_window_seconds)
             needs_encoding_restart = (new_config.frame_rate != old_config.frame_rate
                                       or new_config.resolution != old_config.resolution)
             needs_capture_restart = (needs_encoding_restart

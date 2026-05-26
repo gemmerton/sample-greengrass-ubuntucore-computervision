@@ -192,6 +192,34 @@ export class IotShadowService {
     });
     await client.send(command);
   }
+
+  async getInferenceInterval(thingName: string, credentials: any, region: string): Promise<number | null> {
+    try {
+      const client = this.getClient(credentials, region);
+      const command = new GetThingShadowCommand({ thingName, shadowName: MODEL_CONFIG_SHADOW_NAME });
+      const response = await client.send(command);
+      const shadow = JSON.parse(new TextDecoder().decode(response.payload));
+      return shadow?.state?.reported?.inference_interval ?? shadow?.state?.desired?.inference_interval ?? null;
+    } catch (error: any) {
+      if (error.name === 'ResourceNotFoundException') {
+        return null;
+      }
+      throw error;
+    }
+  }
+
+  async setInferenceInterval(thingName: string, credentials: any, region: string, interval: number): Promise<void> {
+    const client = this.getClient(credentials, region);
+    const payload = JSON.stringify({
+      state: { desired: { inference_interval: interval } },
+    });
+    const command = new UpdateThingShadowCommand({
+      thingName,
+      shadowName: MODEL_CONFIG_SHADOW_NAME,
+      payload: new TextEncoder().encode(payload),
+    });
+    await client.send(command);
+  }
 }
 
 export const iotShadowService = new IotShadowService();

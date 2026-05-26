@@ -129,9 +129,6 @@ export const VlmModelSelector: React.FC<VlmModelSelectorProps> = ({
         <label id="vlm-model-selector-label" className="model-selector__label">
           VLM Model
         </label>
-        <p className="model-selector__hint">
-          Set an IoT Thing Name above to enable VLM model selection.
-        </p>
       </div>
     );
   }

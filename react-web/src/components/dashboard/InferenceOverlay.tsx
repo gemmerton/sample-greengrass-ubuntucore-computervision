@@ -42,7 +42,7 @@ export const InferenceOverlay: React.FC<InferenceOverlayProps> = ({
     if (!result) return;
 
     if (result.result_type === 'detection') {
-      const detections = (result.results as { detections: Detection[] }).detections;
+      const detections = (result.results as { detections: Detection[] }).detections ?? [];
       drawDetections(ctx, detections, canvas.width, canvas.height);
     } else if (result.result_type === 'classification') {
       const classifications = (result.results as { classifications: { label: string; confidence: number }[] }).classifications;
