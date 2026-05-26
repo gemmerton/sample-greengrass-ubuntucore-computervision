@@ -91,9 +91,11 @@ class InferenceHandler:
             if "confidence_threshold" in state:
                 self.confidence_threshold = float(state["confidence_threshold"])
                 logger.info("Confidence threshold updated to %s", self.confidence_threshold)
+                self.shadow_client.update_reported({"confidence_threshold": self.confidence_threshold})
             if "inference_interval" in state:
                 self.inference_interval = float(state["inference_interval"])
                 logger.info("Inference interval updated to %ss", self.inference_interval)
+                self.shadow_client.update_reported({"inference_interval": self.inference_interval})
         except Exception as e:
             logger.error("Failed to handle shadow delta: %s", e)
 
@@ -152,6 +154,13 @@ class InferenceHandler:
         shadow = self.shadow_client.get_shadow()
         reported = shadow.get("state", {}).get("reported", {})
         desired = shadow.get("state", {}).get("desired", {})
+
+        # Restore confidence_threshold and inference_interval from shadow
+        if "confidence_threshold" in reported:
+            self.confidence_threshold = float(reported["confidence_threshold"])
+        if "inference_interval" in reported:
+            self.inference_interval = float(reported["inference_interval"])
+        logger.info("Inference interval updated to %ss", self.inference_interval)
 
         models = reported.get("models", {})
         if not models:

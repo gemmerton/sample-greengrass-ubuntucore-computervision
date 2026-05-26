@@ -6,7 +6,6 @@ import { IoTDataPlaneClient, GetThingShadowCommand, UpdateThingShadowCommand } f
 import { ModelConfigShadowState, ModelEntry } from '../types/modelConfig';
 import type { VlmConfig } from '../types/vlm';
 
-const SHADOW_NAME = 'inference-config';
 const MODEL_CONFIG_SHADOW_NAME = 'model-config';
 
 export interface InferenceConfig {
@@ -77,7 +76,7 @@ export class IotShadowService {
   async getConfidenceThreshold(thingName: string, credentials: any, region: string): Promise<number | null> {
     try {
       const client = this.getClient(credentials, region);
-      const command = new GetThingShadowCommand({ thingName, shadowName: SHADOW_NAME });
+      const command = new GetThingShadowCommand({ thingName, shadowName: MODEL_CONFIG_SHADOW_NAME });
       const response = await client.send(command);
       const shadow = JSON.parse(new TextDecoder().decode(response.payload));
       return shadow?.state?.reported?.confidence_threshold ?? null;
@@ -118,7 +117,7 @@ export class IotShadowService {
     });
     const command = new UpdateThingShadowCommand({
       thingName,
-      shadowName: SHADOW_NAME,
+      shadowName: MODEL_CONFIG_SHADOW_NAME,
       payload: new TextEncoder().encode(payload),
     });
     await client.send(command);
