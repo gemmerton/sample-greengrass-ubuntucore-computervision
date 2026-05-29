@@ -58,9 +58,21 @@ class VlmModelManager:
 
     def _load_current_state(self):
         shadow = self.shadow_client.get_shadow()
-        reported = shadow.get("state", {}).get("reported", {})
+        state = shadow.get("state", {})
+        reported = state.get("reported", {})
+        desired = state.get("desired", {})
         self.reported_models = reported.get("models", {})
         self.active_model = reported.get("active_model")
+
+        # If no active model reported but endpoint is healthy, adopt the
+        # desired active_model as current (service is already running)
+        if not self.active_model and self._wait_for_healthy_quick():
+            desired_active = desired.get("active_model")
+            if desired_active and self.snapd.is_installed(desired_active):
+                self.active_model = desired_active
+                self._report_active_model(desired_active)
+                logger.info("Detected running VLM model: %s", desired_active)
+
         logger.info(
             "Loaded state: models=%s, active=%s",
             list(self.reported_models.keys()), self.active_model,
@@ -198,6 +210,7 @@ class VlmModelManager:
 
         if new_model_id == self.active_model:
             logger.info("Model '%s' is already active, no-op", new_model_id)
+            self._report_active_model(new_model_id)
             self._clear_desired_field("active_model")
             return
 
@@ -269,6 +282,15 @@ class VlmModelManager:
                 pass
             time.sleep(5)
         return False
+
+    def _wait_for_healthy_quick(self):
+        """Quick single-shot health check (no retry loop)."""
+        url = f"http://localhost:{self.vlm_port}/v1/models"
+        try:
+            resp = requests.get(url, timeout=3)
+            return resp.status_code == 200
+        except (requests.ConnectionError, requests.Timeout):
+            return False
 
     def _report_model_status(self, model_id, status, channel=None, reason=None):
         entry = {"status": status}
