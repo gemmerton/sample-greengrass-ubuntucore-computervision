@@ -40,6 +40,7 @@ class VlmHandler:
         self.shadow_client = CloudShadowClient(self.thing_name, SHADOW_NAME)
 
         self.active_model_id = None
+        self._serving_model_name = None
         self.system_prompt = ""
         self.user_prompt = ""
         self.inference_interval = 15
@@ -68,16 +69,34 @@ class VlmHandler:
 
             time.sleep(self.inference_interval)
 
+    def _get_base_url(self):
+        from urllib.parse import urlparse
+        parsed = urlparse(self.vlm_endpoint)
+        return f"{parsed.scheme}://{parsed.netloc}"
+
     def _endpoint_healthy(self):
         try:
-            # Extract scheme://host:port from the endpoint URL
-            from urllib.parse import urlparse
-            parsed = urlparse(self.vlm_endpoint)
-            base_url = f"{parsed.scheme}://{parsed.netloc}"
+            base_url = self._get_base_url()
             resp = requests.get(f"{base_url}/v2/health/live", timeout=3)
-            return resp.status_code == 200
+            if resp.status_code == 200:
+                self._discover_model_name()
+                return True
+            return False
         except (requests.ConnectionError, requests.Timeout):
             return False
+
+    def _discover_model_name(self):
+        """Query the /v3/models endpoint to get the actual pipeline model name."""
+        try:
+            base_url = self._get_base_url()
+            resp = requests.get(f"{base_url}/v3/models", timeout=3)
+            if resp.status_code == 200:
+                data = resp.json()
+                models = data.get("data", [])
+                if models:
+                    self._serving_model_name = models[0].get("id")
+        except Exception:
+            pass
 
     def _subscribe_to_shadow_delta(self):
         if not self.thing_name:
@@ -163,6 +182,7 @@ class VlmHandler:
         messages.append({"role": "user", "content": user_content})
 
         request_body = {
+            "model": self._serving_model_name or self.active_model_id,
             "messages": messages,
             "max_tokens": self.max_tokens,
             "temperature": 0.1,
