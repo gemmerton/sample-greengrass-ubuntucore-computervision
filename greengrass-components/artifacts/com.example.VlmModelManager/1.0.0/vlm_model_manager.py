@@ -158,11 +158,19 @@ class VlmModelManager:
             )
             logger.info("Snap '%s' installed successfully", model_id)
         except SnapdError as e:
-            logger.error("Failed to install snap '%s': %s", model_id, e)
-            self._report_model_status(
-                model_id, "failed", channel=channel, reason=str(e)
-            )
-            return
+            # Timeout may occur while model weights are still downloading,
+            # but the snap itself may already be installed and usable
+            if "timed out" in str(e) and self.snapd.is_installed(model_id):
+                logger.warning(
+                    "Snap '%s' install timed out but snap is present - treating as ready",
+                    model_id,
+                )
+            else:
+                logger.error("Failed to install snap '%s': %s", model_id, e)
+                self._report_model_status(
+                    model_id, "failed", channel=channel, reason=str(e)
+                )
+                return
         except Exception as e:
             logger.error("Unexpected error installing snap '%s': %s", model_id, e)
             self._report_model_status(
