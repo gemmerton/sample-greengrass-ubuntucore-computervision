@@ -149,11 +149,23 @@ class VlmModelManager:
         for model_id, config in to_install.items():
             self._install_vlm_snap(model_id, config)
 
+    def _configure_vlm_port(self, model_id):
+        """Configure a VLM snap to use the standard VLM port."""
+        try:
+            self.snapd.set_snap_conf(model_id, {
+                "http.port": self.vlm_port,
+                "http.host": "0.0.0.0",
+            })
+            logger.info("Configured snap '%s' to use port %d", model_id, self.vlm_port)
+        except Exception as e:
+            logger.warning("Could not configure port for snap '%s': %s", model_id, e)
+
     def _install_vlm_snap(self, model_id, config):
         channel = config.get("channel", "stable")
 
         if self.snapd.is_installed(model_id):
             logger.info("Snap '%s' already installed", model_id)
+            self._configure_vlm_port(model_id)
             self._report_model_status(model_id, "ready", channel=channel)
             if model_id != self.active_model:
                 try:
@@ -189,6 +201,9 @@ class VlmModelManager:
                 model_id, "failed", channel=channel, reason=str(e)
             )
             return
+
+        # Configure standard port
+        self._configure_vlm_port(model_id)
 
         # Stop service immediately unless this is the intended active model
         if model_id != self.active_model:
@@ -271,7 +286,7 @@ class VlmModelManager:
             self._clear_desired_field("active_model")
 
     def _wait_for_healthy(self):
-        url = f"http://localhost:{self.vlm_port}/v1/models"
+        url = f"http://localhost:{self.vlm_port}/v2/health/live"
         deadline = time.time() + self.health_check_timeout
         while time.time() < deadline:
             try:
@@ -285,7 +300,7 @@ class VlmModelManager:
 
     def _wait_for_healthy_quick(self):
         """Quick single-shot health check (no retry loop)."""
-        url = f"http://localhost:{self.vlm_port}/v1/models"
+        url = f"http://localhost:{self.vlm_port}/v2/health/live"
         try:
             resp = requests.get(url, timeout=3)
             return resp.status_code == 200

@@ -71,7 +71,7 @@ class VlmHandler:
     def _endpoint_healthy(self):
         try:
             base_url = self.vlm_endpoint.rsplit("/v1/", 1)[0]
-            resp = requests.get(f"{base_url}/v1/models", timeout=3)
+            resp = requests.get(f"{base_url}/v2/health/live", timeout=3)
             return resp.status_code == 200
         except (requests.ConnectionError, requests.Timeout):
             return False
