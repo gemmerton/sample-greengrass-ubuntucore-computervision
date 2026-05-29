@@ -1,8 +1,8 @@
 ---
 RecipeFormatVersion: '2020-01-25'
-ComponentName: com.example.VlmHandler
+ComponentName: com.example.VlmInferenceHandler
 ComponentVersion: '1.0.0'
-ComponentDescription: 'VLM inference handler - calls inference snap HTTP API for scene risk analysis'
+ComponentDescription: 'VLM inference client - calls inference snap HTTP API for scene risk analysis'
 ComponentPublisher: AWS
 ComponentDependencies:
   aws.greengrass.TokenExchangeService:
@@ -13,18 +13,18 @@ ComponentConfiguration:
     VlmEndpoint: "http://localhost:9090/v1/chat/completions"
     accessControl:
       aws.greengrass.ipc.mqttproxy:
-        com.example.VlmHandler:mqttproxy:1:
+        com.example.VlmInferenceHandler:mqttproxy:1:
           policyDescription: 'Publish VLM analysis results to IoT Core'
           operations:
             - 'aws.greengrass#PublishToIoTCore'
           resources:
             - 'camera/vlm'
-        com.example.VlmHandler:mqttproxy:2:
-          policyDescription: 'Subscribe to model-config shadow delta for config changes'
+        com.example.VlmInferenceHandler:mqttproxy:2:
+          policyDescription: 'Subscribe to vlm-config shadow delta for config changes'
           operations:
             - 'aws.greengrass#SubscribeToIoTCore'
           resources:
-            - '$aws/things/*/shadow/name/model-config/update/delta'
+            - '$aws/things/*/shadow/name/vlm-config/update/delta'
 Manifests:
 - Platform:
     os: all

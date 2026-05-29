@@ -1,0 +1,64 @@
+---
+RecipeFormatVersion: '2020-01-25'
+ComponentName: com.example.VlmModelManager
+ComponentVersion: '1.0.0'
+ComponentDescription: 'VLM model lifecycle manager - installs and switches VLM inference snaps'
+ComponentPublisher: AWS
+ComponentDependencies:
+  aws.greengrass.TokenExchangeService:
+    VersionRequirement: '^2.0.0'
+ComponentConfiguration:
+  DefaultConfiguration:
+    VlmPort: "9090"
+    InstallTimeout: "900"
+    HealthCheckTimeout: "120"
+    accessControl:
+      aws.greengrass.ipc.mqttproxy:
+        com.example.VlmModelManager:mqttproxy:1:
+          policyDescription: 'Subscribe to vlm-config shadow delta for model management'
+          operations:
+            - 'aws.greengrass#SubscribeToIoTCore'
+          resources:
+            - '$aws/things/*/shadow/name/vlm-config/update/delta'
+        com.example.VlmModelManager:mqttproxy:2:
+          policyDescription: 'Publish VLM model manager errors'
+          operations:
+            - 'aws.greengrass#PublishToIoTCore'
+          resources:
+            - 'vlm-manager/*/errors'
+Manifests:
+- Platform:
+    os: all
+    runtime: '*'
+  Lifecycle:
+    Install:
+      Timeout: 600
+      Script: |
+        /bin/bash -c 'set -e && \
+        python3 -m venv --without-pip venv/ && \
+        source venv/bin/activate && \
+        python3 {artifacts:path}/get-pip.py && \
+        python3 -m pip install -r {artifacts:path}/requirements.txt && \
+        deactivate'
+    Run:
+      Script: |
+        /bin/bash -c 'set -e && \
+        source venv/bin/activate && \
+        export AWS_IOT_THING_NAME="{iot:thingName}" && \
+        export VLM_PORT="{configuration:/VlmPort}" && \
+        export INSTALL_TIMEOUT="{configuration:/InstallTimeout}" && \
+        export HEALTH_CHECK_TIMEOUT="{configuration:/HealthCheckTimeout}" && \
+        export PYTHONUNBUFFERED=1 && \
+        export PYTHONDONTWRITEBYTECODE=1 && \
+        python3 {artifacts:path}/vlm_model_manager.py'
+  Artifacts:
+    - Uri: vlm_model_manager.py
+      Unarchive: NONE
+    - Uri: snapd_client.py
+      Unarchive: NONE
+    - Uri: cloud_shadow.py
+      Unarchive: NONE
+    - Uri: get-pip.py
+      Unarchive: NONE
+    - Uri: requirements.txt
+      Unarchive: NONE

@@ -1424,33 +1424,6 @@ class ModelManagerCore:
         if status == "ready" and model_type != "vlm":
             self._regenerate_ovms_config()
 
-        if status == "ready" and model_type == "vlm":
-            self._seed_vlm_config_defaults(model_metadata)
-
-    def _seed_vlm_config_defaults(self, model_metadata):
-        """Seed vlm_config in shadow from manifest defaults if not already set."""
-        if not model_metadata:
-            return
-        shadow = self.shadow_client.get_shadow()
-        reported = shadow.get("state", {}).get("reported", {})
-        if reported.get("vlm_config"):
-            logger.info("vlm_config already exists in shadow, not seeding defaults")
-            return
-
-        default_system = model_metadata.get("default_system_prompt", "")
-        default_user = model_metadata.get("default_user_prompt", "")
-        if not default_system:
-            return
-
-        vlm_config = {
-            "system_prompt": default_system,
-            "user_prompt": default_user,
-            "inference_interval": 15,
-            "max_tokens": model_metadata.get("max_tokens", 256),
-        }
-        self.shadow_client.update_reported({"vlm_config": vlm_config})
-        logger.info("Seeded vlm_config defaults from model manifest")
-
     def _update_shadow_reported(self):
         """Push the full reported state to the shadow."""
         if not self.thing_name:
