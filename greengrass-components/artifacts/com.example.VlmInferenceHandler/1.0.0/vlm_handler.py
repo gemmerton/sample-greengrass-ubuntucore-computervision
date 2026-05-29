@@ -175,7 +175,9 @@ class VlmHandler:
                 json=request_body,
                 timeout=120,
             )
-            resp.raise_for_status()
+            if resp.status_code != 200:
+                logger.error("VLM API error %d: %s", resp.status_code, resp.text[:200])
+                return
             result = resp.json()
         except requests.RequestException as e:
             logger.error("VLM API request failed: %s", e)
