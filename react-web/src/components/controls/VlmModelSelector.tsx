@@ -1,12 +1,12 @@
 /**
  * VlmModelSelector - Displays VLM model inventory and allows switching the active VLM model
- * independently from the CV model, via the model-config IoT Device Shadow.
+ * independently from the CV model, via the vlm-config IoT Device Shadow.
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { iotShadowService } from '../../services/iotShadowService';
+import { iotShadowService, VlmConfigShadowState } from '../../services/iotShadowService';
 import { useAuthenticatedAWS } from '../../hooks/useAuthenticatedAWS';
-import { ModelEntry, ModelInventory, ModelSwitchState } from '../../types/modelConfig';
+import { ModelSwitchState } from '../../types/modelConfig';
 import './ModelSelector.css';
 
 export interface VlmModelSelectorProps {
@@ -22,7 +22,7 @@ export const VlmModelSelector: React.FC<VlmModelSelectorProps> = ({
 }) => {
   const { credentials, region } = useAuthenticatedAWS();
 
-  const [vlmModels, setVlmModels] = useState<ModelInventory>({});
+  const [vlmModels, setVlmModels] = useState<Record<string, { status: string; channel?: string; reason?: string }>>({});
   const [activeVlmModelId, setActiveVlmModelId] = useState<string | null>(null);
   const [selectedVlmModelId, setSelectedVlmModelId] = useState<string | null>(null);
   const [switchState, setSwitchState] = useState<ModelSwitchState>('idle');
@@ -30,28 +30,26 @@ export const VlmModelSelector: React.FC<VlmModelSelectorProps> = ({
   const [shadowExists, setShadowExists] = useState<boolean>(true);
   const [errorMessage, setErrorMessage] = useState<string>('');
 
+  const applyVlmState = (state: VlmConfigShadowState | null) => {
+    if (state) {
+      setVlmModels(state.reported_models);
+      setActiveVlmModelId(state.reported_active_model);
+      setSelectedVlmModelId(state.reported_active_model);
+      setShadowExists(true);
+    } else {
+      setShadowExists(false);
+    }
+  };
+
   useEffect(() => {
     if (!thingName || !credentials) return;
     let cancelled = false;
 
     const loadShadow = async (attempt: number): Promise<void> => {
       try {
-        const state = await iotShadowService.getModelConfigShadow(thingName, credentials, region);
+        const state = await iotShadowService.getVlmConfigShadow(thingName, credentials, region);
         if (cancelled) return;
-        if (state) {
-          const vlm: ModelInventory = {};
-          for (const [id, entry] of Object.entries(state.reported_models)) {
-            if (entry.type === 'vlm') {
-              vlm[id] = entry;
-            }
-          }
-          setVlmModels(vlm);
-          setActiveVlmModelId(state.reported_active_vlm_model);
-          setSelectedVlmModelId(state.reported_active_vlm_model);
-          setShadowExists(true);
-        } else {
-          setShadowExists(false);
-        }
+        applyVlmState(state);
         setLoadState('loaded');
       } catch (err: any) {
         if (cancelled) return;
@@ -76,19 +74,8 @@ export const VlmModelSelector: React.FC<VlmModelSelectorProps> = ({
     setLoadState('loading');
 
     try {
-      const state = await iotShadowService.getModelConfigShadow(thingName, credentials, region);
-      if (state) {
-        const vlm: ModelInventory = {};
-        for (const [id, entry] of Object.entries(state.reported_models)) {
-          if (entry.type === 'vlm') vlm[id] = entry;
-        }
-        setVlmModels(vlm);
-        setActiveVlmModelId(state.reported_active_vlm_model);
-        setSelectedVlmModelId(state.reported_active_vlm_model);
-        setShadowExists(true);
-      } else {
-        setShadowExists(false);
-      }
+      const state = await iotShadowService.getVlmConfigShadow(thingName, credentials, region);
+      applyVlmState(state);
       setLoadState('loaded');
     } catch (err: any) {
       setErrorMessage('Failed to read VLM model configuration.');
@@ -116,8 +103,8 @@ export const VlmModelSelector: React.FC<VlmModelSelectorProps> = ({
     }
   }, [selectedVlmModelId, activeVlmModelId, credentials, thingName, region, switchState]);
 
-  const handleModelClick = (modelId: string, entry: ModelEntry) => {
-    if (entry.status !== 'ready') return;
+  const handleModelClick = (modelId: string, status: string) => {
+    if (status !== 'ready') return;
     if (switchState !== 'idle') return;
     setSelectedVlmModelId(modelId);
     setErrorMessage('');
@@ -138,10 +125,11 @@ export const VlmModelSelector: React.FC<VlmModelSelectorProps> = ({
     selectedVlmModelId !== null &&
     selectedVlmModelId !== activeVlmModelId;
 
-  const renderStatusBadge = (status: ModelEntry['status']): React.ReactNode => {
+  const renderStatusBadge = (status: string): React.ReactNode => {
     const label = status === 'ready' ? 'Ready' : status === 'installing' ? 'Installing' : 'Failed';
+    const cssStatus = ['ready', 'installing', 'failed'].includes(status) ? status : 'failed';
     return (
-      <span className={`model-selector__status-badge model-selector__status-badge--${status}`}>
+      <span className={`model-selector__status-badge model-selector__status-badge--${cssStatus}`}>
         {label}
       </span>
     );
@@ -186,20 +174,20 @@ export const VlmModelSelector: React.FC<VlmModelSelectorProps> = ({
                     role="option"
                     aria-selected={modelId === selectedVlmModelId}
                     aria-disabled={!isSelectable}
-                    onClick={() => handleModelClick(modelId, entry)}
+                    onClick={() => handleModelClick(modelId, entry.status)}
                     tabIndex={isSelectable ? 0 : -1}
                     onKeyDown={(e) => {
                       if ((e.key === 'Enter' || e.key === ' ') && isSelectable) {
                         e.preventDefault();
-                        handleModelClick(modelId, entry);
+                        handleModelClick(modelId, entry.status);
                       }
                     }}
                   >
                     <div className="model-selector__item-content">
-                      <span className="model-selector__item-name">{entry.model_metadata.model_name}</span>
-                      <span className="model-selector__item-meta">{modelId} &middot; v{entry.model_metadata.version}</span>
+                      <span className="model-selector__item-name">{modelId}</span>
+                      <span className="model-selector__item-meta">{entry.channel ?? 'stable'} channel</span>
                       {entry.status === 'failed' && (
-                        <span className="model-selector__item-failure">{entry.failure_reason || 'Failed'}</span>
+                        <span className="model-selector__item-failure">{entry.reason || 'Failed'}</span>
                       )}
                     </div>
                     {renderStatusBadge(entry.status)}

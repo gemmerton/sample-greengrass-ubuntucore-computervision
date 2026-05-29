@@ -7,6 +7,7 @@ import { ModelConfigShadowState, ModelEntry } from '../types/modelConfig';
 import type { VlmConfig } from '../types/vlm';
 
 const MODEL_CONFIG_SHADOW_NAME = 'model-config';
+const VLM_CONFIG_SHADOW_NAME = 'vlm-config';
 
 export interface InferenceConfig {
   confidence_threshold: number;
@@ -19,21 +20,14 @@ export interface InferenceConfig {
 export function parseModelConfigShadow(payload: any): ModelConfigShadowState {
   const reported = payload?.state?.reported ?? {};
   const rawActiveModel = reported.active_model;
-  const rawActiveVlmModel = reported.active_vlm_model;
   const rawModels = reported.models ?? {};
-  const rawVlmConfig = reported.vlm_config;
 
   const reported_active_model =
     typeof rawActiveModel === 'string' && rawActiveModel.trim().length > 0
       ? rawActiveModel
       : null;
 
-  const reported_active_vlm_model =
-    typeof rawActiveVlmModel === 'string' && rawActiveVlmModel.trim().length > 0
-      ? rawActiveVlmModel
-      : null;
-
-  // Parse each model entry defensively
+  // Parse each model entry defensively (CV models only)
   const reported_models: Record<string, ModelEntry> = {};
   for (const [modelId, entry] of Object.entries(rawModels)) {
     if (typeof entry === 'object' && entry !== null) {
@@ -42,7 +36,7 @@ export function parseModelConfigShadow(payload: any): ModelConfigShadowState {
         status: ['ready', 'installing', 'failed'].includes(e.status)
           ? e.status
           : 'failed',
-        type: e.type === 'vlm' ? 'vlm' : 'cv',
+        type: 'cv',
         model_metadata: {
           model_name: e.model_metadata?.model_name ?? modelId,
           version: e.model_metadata?.version ?? 'unknown',
@@ -56,6 +50,38 @@ export function parseModelConfigShadow(payload: any): ModelConfigShadowState {
     }
   }
 
+  return { reported_active_model, reported_active_vlm_model: null, reported_models, reported_vlm_config: null };
+}
+
+export interface VlmConfigShadowState {
+  reported_active_model: string | null;
+  reported_models: Record<string, { status: string; channel?: string; reason?: string }>;
+  reported_vlm_config: VlmConfig | null;
+}
+
+export function parseVlmConfigShadow(payload: any): VlmConfigShadowState {
+  const reported = payload?.state?.reported ?? {};
+
+  const rawActiveModel = reported.active_model;
+  const reported_active_model =
+    typeof rawActiveModel === 'string' && rawActiveModel.trim().length > 0
+      ? rawActiveModel
+      : null;
+
+  const rawModels = reported.models ?? {};
+  const reported_models: Record<string, { status: string; channel?: string; reason?: string }> = {};
+  for (const [modelId, entry] of Object.entries(rawModels)) {
+    if (typeof entry === 'object' && entry !== null) {
+      const e = entry as any;
+      reported_models[modelId] = {
+        status: e.status ?? 'not_installed',
+        channel: e.channel,
+        reason: e.reason,
+      };
+    }
+  }
+
+  const rawVlmConfig = reported.vlm_config;
   const reported_vlm_config: VlmConfig | null = rawVlmConfig
     ? {
         system_prompt: rawVlmConfig.system_prompt ?? '',
@@ -65,7 +91,7 @@ export function parseModelConfigShadow(payload: any): ModelConfigShadowState {
       }
     : null;
 
-  return { reported_active_model, reported_active_vlm_model, reported_models, reported_vlm_config };
+  return { reported_active_model, reported_models, reported_vlm_config };
 }
 
 export class IotShadowService {
@@ -147,6 +173,28 @@ export class IotShadowService {
     }
   }
 
+  async getVlmConfigShadow(
+    thingName: string,
+    credentials: any,
+    region: string
+  ): Promise<VlmConfigShadowState | null> {
+    try {
+      const client = this.getClient(credentials, region);
+      const command = new GetThingShadowCommand({
+        thingName,
+        shadowName: VLM_CONFIG_SHADOW_NAME,
+      });
+      const response = await client.send(command);
+      const shadow = JSON.parse(new TextDecoder().decode(response.payload));
+      return parseVlmConfigShadow(shadow);
+    } catch (error: any) {
+      if (error.name === 'ResourceNotFoundException') {
+        return null;
+      }
+      throw error;
+    }
+  }
+
   async setActiveVlmModel(
     thingName: string,
     credentials: any,
@@ -155,11 +203,11 @@ export class IotShadowService {
   ): Promise<void> {
     const client = this.getClient(credentials, region);
     const payload = JSON.stringify({
-      state: { desired: { active_vlm_model: modelId } },
+      state: { desired: { active_model: modelId } },
     });
     const command = new UpdateThingShadowCommand({
       thingName,
-      shadowName: MODEL_CONFIG_SHADOW_NAME,
+      shadowName: VLM_CONFIG_SHADOW_NAME,
       payload: new TextEncoder().encode(payload),
     });
     await client.send(command);
@@ -170,7 +218,7 @@ export class IotShadowService {
     credentials: any,
     region: string
   ): Promise<VlmConfig | null> {
-    const state = await this.getModelConfigShadow(thingName, credentials, region);
+    const state = await this.getVlmConfigShadow(thingName, credentials, region);
     return state?.reported_vlm_config ?? null;
   }
 
@@ -186,7 +234,7 @@ export class IotShadowService {
     });
     const command = new UpdateThingShadowCommand({
       thingName,
-      shadowName: MODEL_CONFIG_SHADOW_NAME,
+      shadowName: VLM_CONFIG_SHADOW_NAME,
       payload: new TextEncoder().encode(payload),
     });
     await client.send(command);
