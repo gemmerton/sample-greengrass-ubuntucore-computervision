@@ -44,7 +44,7 @@ const DashboardContent: React.FC<DashboardProps> = ({
   const { state: mqttState } = useMqtt();
   const { credentials, region } = useAuthenticatedAWS();
   const [thingName, setThingName] = useState<string>('');
-  const [mqttTopic, setMqttTopic] = useState<string>('');
+  const [mqttTopic, setMqttTopic] = useState<string>('camera/#');
   const [activeLeftPanel, setActiveLeftPanel] = useState<'general' | 'cv' | 'vlm' | null>(null);
   const [messagePanelOpen, setMessagePanelOpen] = useState<boolean>(false);
   const [videoElement, setVideoElement] = useState<HTMLVideoElement | null>(null);
@@ -294,7 +294,7 @@ const DashboardContent: React.FC<DashboardProps> = ({
 export const Dashboard: React.FC<DashboardProps> = ({ children, className }) => {
   return (
     <S3Provider autoRefreshInterval={30000} maxImages={20}>
-      <MqttProvider autoConnect={false} defaultTopic="camera/#">
+      <MqttProvider autoConnect={true} defaultTopic="camera/#">
         <DashboardContent children={children} className={className} />
       </MqttProvider>
     </S3Provider>
