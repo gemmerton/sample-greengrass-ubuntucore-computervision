@@ -150,13 +150,27 @@ class VlmModelManager:
             self._install_vlm_snap(model_id, config)
 
     def _configure_vlm_port(self, model_id):
-        """Configure a VLM snap to use the standard VLM port."""
+        """Configure a VLM snap to use the standard VLM port via its CLI."""
+        import subprocess
         try:
-            self.snapd.set_snap_conf(model_id, {
-                "http.port": self.vlm_port,
-                "http.host": "0.0.0.0",
-            })
+            subprocess.run(
+                [model_id, "set", f"http.port={self.vlm_port}"],
+                capture_output=True, timeout=10, check=True,
+            )
+            subprocess.run(
+                [model_id, "set", "http.host=0.0.0.0"],
+                capture_output=True, timeout=10, check=True,
+            )
             logger.info("Configured snap '%s' to use port %d", model_id, self.vlm_port)
+        except FileNotFoundError:
+            logger.warning("Snap CLI '%s' not found, trying snapd conf API", model_id)
+            try:
+                self.snapd.set_snap_conf(model_id, {
+                    "http.port": self.vlm_port,
+                    "http.host": "0.0.0.0",
+                })
+            except Exception as e:
+                logger.warning("Could not configure port for snap '%s': %s", model_id, e)
         except Exception as e:
             logger.warning("Could not configure port for snap '%s': %s", model_id, e)
 
