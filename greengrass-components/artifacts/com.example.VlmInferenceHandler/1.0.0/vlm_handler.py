@@ -163,9 +163,11 @@ class VlmHandler:
         messages.append({"role": "user", "content": user_content})
 
         request_body = {
+            "model": self.active_model_id,
             "messages": messages,
             "max_tokens": self.max_tokens,
             "temperature": 0.1,
+            "stream": False,
         }
 
         try:
