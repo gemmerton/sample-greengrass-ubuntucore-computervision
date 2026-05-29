@@ -10,7 +10,7 @@ ComponentDependencies:
 ComponentConfiguration:
   DefaultConfiguration:
     SnapshotDir: "/var/snap/aws-iot-greengrass/common/greengrass/v2/work/com.example.KvsProducer/snapshots"
-    VlmEndpoint: "http://localhost:9090/v1/chat/completions"
+    VlmEndpoint: "http://localhost:9090/v3/chat/completions"
     accessControl:
       aws.greengrass.ipc.mqttproxy:
         com.example.VlmInferenceHandler:mqttproxy:1:

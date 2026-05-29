@@ -250,6 +250,9 @@ class VlmModelManager:
             except Exception as e:
                 logger.warning("Failed to stop snap '%s': %s", self.active_model, e)
 
+        # Configure port on new model before starting
+        self._configure_vlm_port(new_model_id)
+
         # Start new model
         try:
             self.snapd.start_snap_service(new_model_id)

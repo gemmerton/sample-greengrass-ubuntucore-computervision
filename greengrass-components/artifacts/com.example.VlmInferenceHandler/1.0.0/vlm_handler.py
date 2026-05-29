@@ -35,7 +35,7 @@ class VlmHandler:
             "SNAPSHOT_DIR",
             "/var/snap/aws-iot-greengrass/common/greengrass/v2/work/com.example.KvsProducer/snapshots"
         )
-        self.vlm_endpoint = os.environ.get("VLM_ENDPOINT", "http://localhost:9090/v1/chat/completions")
+        self.vlm_endpoint = os.environ.get("VLM_ENDPOINT", "http://localhost:9090/v3/chat/completions")
         self.ipc_client = clientv2.GreengrassCoreIPCClientV2()
         self.shadow_client = CloudShadowClient(self.thing_name, SHADOW_NAME)
 
