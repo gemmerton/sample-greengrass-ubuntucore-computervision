@@ -341,26 +341,82 @@ class GreengrassDeployer:
         
         return components
 
+    def ensure_device_shadows(self, thing_name):
+        """Ensure required named shadows exist for the device.
+
+        Creates model-config, kvs-config, and inference-config shadows with
+        default desired state if they don't already exist. Existing shadows
+        are left untouched.
+        """
+        iot_data = boto3.client('iot-data', region_name=self.aws_region)
+
+        shadows = {
+            'model-config': {
+                'state': {'desired': {
+                    'models': {
+                        'faster-rcnn': {'source': 'snap', 'type': 'cv'},
+                        'person-detection': {'source': 'snap', 'type': 'cv'},
+                        'efficientnet': {'source': 'snap', 'type': 'cv'},
+                    },
+                    'inference_interval': 1,
+                    'confidence_threshold': 0.4,
+                }}
+            },
+            'kvs-config': {
+                'state': {'desired': {
+                    'stream_name': 'ge-demo-stream',
+                    'frame_rate': 15,
+                    'resolution': '640x480',
+                    'streaming_enabled': True,
+                    'staleness_window_seconds': 30.0,
+                    'snapshot_interval_seconds': 1,
+                }}
+            },
+            'inference-config': {
+                'state': {'desired': {
+                    'confidence_threshold': 0.4,
+                }}
+            },
+        }
+
+        for shadow_name, payload in shadows.items():
+            try:
+                iot_data.get_thing_shadow(thingName=thing_name, shadowName=shadow_name)
+                print(f"Shadow '{shadow_name}' already exists")
+            except ClientError as e:
+                if e.response['Error']['Code'] == 'ResourceNotFoundException':
+                    iot_data.update_thing_shadow(
+                        thingName=thing_name,
+                        shadowName=shadow_name,
+                        payload=json.dumps(payload).encode('utf-8'),
+                    )
+                    print(f"Created shadow '{shadow_name}' with default desired state")
+                else:
+                    print(f"Warning: could not check shadow '{shadow_name}': {e}")
+
     def deploy_to_thing(self, thing_name):
         """Deploy existing components to IoT Thing."""
         print(f"Creating deployment to IoT Thing: {thing_name}")
         print(f"AWS Region: {self.aws_region}")
-        
+
         if self.s3_bucket == 'dummy':
             print("Warning: S3 bucket not specified for deployment. Components may not have correct S3 configuration.")
-        
+
+        # Ensure device shadows exist before deploying
+        self.ensure_device_shadows(thing_name)
+
         # Get existing components from recipes
         components = self.get_components_from_recipes()
-        
+
         # Create deployment
         deployment_id = self.create_deployment(thing_name, components)
-        
+
         print(f"\nDeployment created successfully!")
         print(f"Deployment ID: {deployment_id}")
         print(f"Components deployed: {len(components)}")
         for component in components:
             print(f"  - {component['componentName']} v{component['componentVersion']}")
-        
+
         return deployment_id
 
     def get_components_from_recipes(self):
@@ -421,15 +477,18 @@ class GreengrassDeployer:
         print(f"Using S3 bucket: {self.s3_bucket}")
         print(f"AWS Region: {self.aws_region}")
 
+        # Ensure device shadows exist before deploying
+        self.ensure_device_shadows(thing_name)
+
         # Validate structure
         self.validate_structure()
 
         # Create all components
         components = self.create_all_components()
-        
+
         # Create deployment
         deployment_id = self.create_deployment(thing_name, components)
-        
+
         print(f"\nFull deployment completed successfully!")
         print(f"Deployment ID: {deployment_id}")
         print(f"Components deployed: {len(components)}")

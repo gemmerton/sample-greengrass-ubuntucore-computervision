@@ -276,6 +276,49 @@ class SnapdClient:
         tracking_channel = snap_info.get("tracking-channel", "")
         return bool(tracking_channel)
 
+    def get_snap_conf(self, snap_name, key=None):
+        """Get snap configuration via the snapd API.
+
+        Args:
+            snap_name: Name of the snap
+            key: Optional dotted key to retrieve (e.g. 'engine'). If None, returns all config.
+
+        Returns:
+            The configuration value, or None if not set.
+        """
+        path = f"/{SNAPD_API_VERSION}/snaps/{snap_name}/conf"
+        if key:
+            path += f"?keys={key}"
+        try:
+            data = self._request("GET", path)
+            result = data.get("result", {})
+            if key:
+                return result.get(key)
+            return result
+        except SnapdError:
+            return None
+
+    def set_snap_conf(self, snap_name, config, timeout=60):
+        """Set snap configuration via the snapd API.
+
+        Args:
+            snap_name: Name of the snap
+            config: Dict of key-value pairs to set (e.g. {'engine': 'intel-cpu'})
+            timeout: Maximum seconds to wait for the change
+
+        Returns:
+            True on success
+
+        Raises:
+            SnapdError: If the configuration change fails
+        """
+        path = f"/{SNAPD_API_VERSION}/snaps/{snap_name}/conf"
+        data = self._request("PUT", path, body=config)
+        if data.get("type") == "async":
+            change_id = data.get("change")
+            self._wait_for_change(change_id, timeout=timeout)
+        return True
+
     def sideload_component(self, comp_file_path, timeout=300):
         """Sideload a snap component from a local .comp file.
 

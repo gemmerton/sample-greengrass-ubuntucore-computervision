@@ -76,8 +76,10 @@ class ModelManagerCore:
 
     def run(self):
         """Main entry point: load current state, subscribe to shadow delta, and block."""
+        self._ensure_ovms_engine()
         self._load_current_reported_state()
         self._subscribe_to_shadow_delta()
+        self._reconcile_on_startup()
 
         logger.info("ModelManagerCore running, waiting for shadow delta events...")
         try:
@@ -85,6 +87,25 @@ class ModelManagerCore:
                 time.sleep(1)
         except KeyboardInterrupt:
             logger.info("ModelManagerCore stopped")
+
+    def _ensure_ovms_engine(self):
+        """Ensure the ovms-engine snap has an active engine configured.
+
+        On a fresh device, OVMS will crash-loop with 'no active engine' until
+        an engine is set. This checks via the snapd API and defaults to
+        'intel-cpu' if unset.
+        """
+        DEFAULT_ENGINE = "intel-cpu"
+        try:
+            current = self.snapd.get_snap_conf(self.SNAP_NAME, "engine")
+            if current:
+                logger.info("OVMS engine already configured: %s", current)
+                return
+            logger.info("No OVMS engine configured, setting default: %s", DEFAULT_ENGINE)
+            self.snapd.set_snap_conf(self.SNAP_NAME, {"engine": DEFAULT_ENGINE})
+            logger.info("OVMS engine set to '%s'", DEFAULT_ENGINE)
+        except Exception as e:
+            logger.warning("Could not configure OVMS engine via snapd: %s", e)
 
     def _load_current_reported_state(self):
         """Read the current shadow to populate local reported_models cache."""
@@ -99,6 +120,102 @@ class ModelManagerCore:
             "Loaded current reported models: %s",
             list(self.reported_models.keys()),
         )
+
+    def _reconcile_on_startup(self):
+        """Reconcile desired vs reported state on startup.
+
+        Handles the case where a delta was published before this component
+        started (e.g. fresh device, or component restart after transient failure).
+        Also recovers models stuck in 'failed' status whose files are now present.
+        """
+        if not self.thing_name:
+            return
+
+        shadow = self.shadow_client.get_shadow()
+        if not shadow:
+            return
+
+        state = shadow.get("state", {})
+        desired = state.get("desired", {})
+        reported = state.get("reported", {})
+        delta = state.get("delta", {})
+
+        # Recover models that are reported as 'failed' but whose files exist
+        self._recover_failed_models(reported)
+
+        if not desired and not delta:
+            return
+
+        logger.info("Startup reconciliation: checking for pending desired state")
+
+        desired_models = desired.get("models", {})
+        if desired_models:
+            self._reconcile_models(desired_models)
+
+        if "active_model" in delta:
+            logger.info(
+                "Startup reconciliation: pending active_model=%s",
+                delta["active_model"],
+            )
+            self._handle_active_model(delta["active_model"])
+
+    def _recover_failed_models(self, reported):
+        """Check models with 'failed' status and recover if files are now present."""
+        models = reported.get("models", {})
+        recovered = False
+
+        for model_id, entry in models.items():
+            if not isinstance(entry, dict) or entry.get("status") != "failed":
+                continue
+
+            component_path = self._find_component_path(f"model-{model_id}")
+            if not component_path:
+                continue
+
+            manifest_path = os.path.join(component_path, "manifest.json")
+            try:
+                with open(manifest_path, "r") as f:
+                    manifest = json.load(f)
+            except (FileNotFoundError, PermissionError, json.JSONDecodeError):
+                continue
+
+            logger.info(
+                "Recovering model '%s' from failed state - files found at %s",
+                model_id, component_path,
+            )
+            model_type = entry.get("type", "cv")
+            model_metadata = self._build_metadata_from_manifest(
+                manifest, model_id, component_path
+            )
+            self._report_model_status(
+                model_id, "ready", model_type=model_type, model_metadata=model_metadata
+            )
+            recovered = True
+
+        if recovered:
+            logger.info("Startup recovery complete - updated shadow reported state")
+
+    def _build_metadata_from_manifest(self, manifest, model_id, component_path):
+        """Build model_metadata dict from a manifest.json file."""
+        labels_dir = os.path.join(self.snap_common_path, "labels")
+        labels_path = os.path.join(labels_dir, f"{model_id}.txt")
+        if not os.path.isfile(labels_path):
+            labels_path = None
+
+        metadata = {
+            "model_name": manifest.get("model_name"),
+            "version": manifest.get("version"),
+            "input_name": manifest.get("input_name"),
+            "output_names": manifest.get("output_names"),
+            "input_shape": manifest.get("input_shape"),
+            "input_dtype": manifest.get("input_dtype"),
+            "labels_file": labels_path,
+            "local_path": component_path,
+            "default_system_prompt": manifest.get("default_system_prompt"),
+            "default_user_prompt": manifest.get("default_user_prompt"),
+            "max_tokens": manifest.get("max_tokens"),
+        }
+        return {k: v for k, v in metadata.items() if v is not None}
 
     def _subscribe_to_shadow_delta(self):
         """Subscribe to the model-config named shadow delta via IoT Core MQTT."""
