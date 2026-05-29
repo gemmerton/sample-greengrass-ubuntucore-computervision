@@ -68,14 +68,16 @@ export const VlmPanel: React.FC<VlmPanelProps> = ({ latestResult }) => {
                 <ul className="vlm-panel__risks-list">
                   {response.risks.map((risk, i) => (
                     <li key={i} className="vlm-panel__risk-item">
-                      <span
-                        className="vlm-panel__risk-severity"
-                        style={{ color: RISK_COLORS[risk.severity] }}
-                      >
-                        {risk.severity}
-                      </span>
+                      <div className="vlm-panel__risk-top-row">
+                        <span
+                          className="vlm-panel__risk-severity"
+                          style={{ backgroundColor: RISK_COLORS[risk.severity] }}
+                        >
+                          {risk.severity}
+                        </span>
+                        <span className="vlm-panel__risk-category">{risk.category}</span>
+                      </div>
                       <span className="vlm-panel__risk-desc">{risk.description}</span>
-                      <span className="vlm-panel__risk-category">{risk.category}</span>
                     </li>
                   ))}
                 </ul>

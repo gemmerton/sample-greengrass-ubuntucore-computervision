@@ -73,25 +73,35 @@
   margin: 8px 0 0 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 0;
 }
 
 .vlm-panel__risk-item {
   display: flex;
-  gap: 8px;
-  align-items: baseline;
+  flex-direction: column;
+  gap: 6px;
   font-size: 0.85rem;
+  padding: 8px;
+  border: 1px solid var(--border, #333);
+  border-radius: 4px;
+}
+
+.vlm-panel__risk-item + .vlm-panel__risk-item {
+  margin-top: 6px;
+}
+
+.vlm-panel__risk-top-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
 }
 
 .vlm-panel__risk-severity {
   font-weight: 600;
   font-size: 0.7rem;
-  min-width: 48px;
-}
-
-.vlm-panel__risk-desc {
-  color: var(--text-primary, #eee);
-  flex: 1;
+  padding: 2px 8px;
+  border-radius: 3px;
+  color: #fff;
 }
 
 .vlm-panel__risk-category {
@@ -100,6 +110,14 @@
   background: var(--bg-subtle, #2a2a3e);
   padding: 2px 6px;
   border-radius: 3px;
+}
+
+.vlm-panel__risk-desc {
+  color: var(--text-primary, #eee);
+  font-size: 0.82rem;
+  line-height: 1.4;
+  border-top: 1px solid var(--border, #333);
+  padding-top: 6px;
 }
 
 .vlm-panel__raw {
