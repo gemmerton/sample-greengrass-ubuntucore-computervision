@@ -238,14 +238,17 @@ export const MqttProvider: React.FC<MqttProviderProps> = ({
     dispatch({ type: 'RESET_STATE' });
   }, []);
 
-  // Only reset when authentication changes, don't auto-connect
+  // Auto-connect when authenticated and autoConnect is enabled
   useEffect(() => {
     if (!isAuthenticated) {
       console.log('Not authenticated, resetting MQTT state');
       disconnect();
       reset();
+    } else if (autoConnect && defaultTopic && !state.connected && state.connectionStatus !== 'connecting') {
+      console.log('Auto-connecting to MQTT topic:', defaultTopic);
+      connect(defaultTopic);
     }
-  }, [isAuthenticated, disconnect, reset]);
+  }, [isAuthenticated, autoConnect, defaultTopic, disconnect, reset, connect, state.connected, state.connectionStatus]);
 
   // Cleanup on unmount
   useEffect(() => {
