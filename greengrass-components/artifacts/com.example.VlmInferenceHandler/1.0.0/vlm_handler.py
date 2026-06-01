@@ -220,9 +220,11 @@ class VlmHandler:
             "\n\n---\nSEPARATE TASK - ALERT RULES (do NOT mix these into the risks array above):\n"
             "After completing the risk assessment, also check the following alert rules against the image. "
             "Alert rules are NOT safety risks - do not include them in the risks array. "
+            "Only trigger a rule if its condition is CLEARLY AND VISIBLY TRUE in the image. "
+            "If you cannot see the condition or are unsure, do NOT trigger it. "
             "Add a separate \"alerts\" array to your JSON. "
-            "For each rule that is TRUE, add: {\"rule\": \"exact rule text\", \"triggered\": true, \"detail\": \"one sentence\"}. "
-            "If no rules are triggered, set \"alerts\": [].\n\n"
+            "For each rule that is clearly true, add: {\"rule\": \"exact rule text\", \"triggered\": true, \"detail\": \"what you see that confirms it\"}. "
+            "If no rules are clearly confirmed by the image, set \"alerts\": [].\n\n"
             f"Alert rules to check:\n{rules_text}"
         )
         return prompt
