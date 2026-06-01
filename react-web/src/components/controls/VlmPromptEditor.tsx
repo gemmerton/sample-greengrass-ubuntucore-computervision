@@ -9,9 +9,9 @@ const PRESETS: Record<string, { system: string; user: string }> = {
     system: 'You are a workplace safety analyst. Analyse the image and return a JSON object with: risk_level (HIGH/MEDIUM/LOW/NONE), summary (one sentence), and risks (array of {description, severity, category}).',
     user: 'Assess workplace safety risks visible in this scene.',
   },
-  'Traffic Monitoring': {
-    system: 'You are a traffic safety analyst. Analyse the image and return a JSON object with: risk_level (HIGH/MEDIUM/LOW/NONE), summary (one sentence), and risks (array of {description, severity, category}).',
-    user: 'Identify traffic hazards and unsafe driver or pedestrian behaviour in this scene.',
+  'Construction Site Safety': {
+    system: 'You are a construction site safety analyst specialising in excavation and earthworks operations. Analyse the image and return a JSON object with: risk_level (HIGH/MEDIUM/LOW/NONE), summary (one sentence), and risks (array of {description, severity, category}). Focus on: worker proximity to excavator swing radius, PPE compliance (hard hats, hi-vis vests, safety boots), trench/excavation stability, overhead hazards, exclusion zone violations, and struck-by risks.',
+    user: 'Assess construction site safety risks in this scene, with particular attention to excavator operations and worker positioning.',
   },
   'Retail Security': {
     system: 'You are a retail security analyst. Analyse the image and return a JSON object with: risk_level (HIGH/MEDIUM/LOW/NONE), summary (one sentence), and risks (array of {description, severity, category}).',
