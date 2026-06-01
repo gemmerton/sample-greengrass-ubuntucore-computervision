@@ -209,19 +209,17 @@ class VlmHandler:
         return False
 
     def _build_system_prompt(self):
-        """Build the full system prompt, injecting alert rules if defined."""
+        """Build the full system prompt, injecting alert rules into the JSON schema."""
         prompt = self.system_prompt
         if not self.alert_rules:
             return prompt
-        rules_text = "\n".join(f"{i+1}. {rule}" for i, rule in enumerate(self.alert_rules) if rule.strip())
+        rules_text = ", ".join(f'"{rule}"' for rule in self.alert_rules if rule.strip())
         if not rules_text:
             return prompt
-        prompt += (
-            "\n\nALERT RULES - check each rule and populate the \"alerts\" array:\n"
-            "For each rule whose condition is visible in the image, add to the alerts array: "
-            "{\"rule\": \"<copy the rule text>\", \"triggered\": true, \"detail\": \"<what you see>\"}. "
-            "If no rules match, set \"alerts\": [].\n\n"
-            f"Rules:\n{rules_text}"
+        prompt = prompt.replace(
+            "and alerts (array, see below if rules are provided)",
+            f'and alerts (for each of these conditions that is TRUE in the image: [{rules_text}], '
+            'add {"rule": "the condition", "triggered": true, "detail": "what you see"}; if none are true set alerts to [])'
         )
         return prompt
 
