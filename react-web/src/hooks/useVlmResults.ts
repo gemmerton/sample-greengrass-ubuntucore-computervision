@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useMqtt } from '../contexts/MqttContext';
-import type { VlmResult } from '../types/vlm';
+import type { VlmResult, VlmAlert } from '../types/vlm';
 
 const VLM_TOPIC = 'camera/vlm';
 const MAX_HISTORY = 20;
@@ -30,5 +30,8 @@ export function useVlmResults() {
     setLatestResult(null);
   }, []);
 
-  return { latestResult, history, clearHistory };
+  const latestAlerts: VlmAlert[] = latestResult?.response?.alerts ?? [];
+  const latestTimestamp: number | null = latestResult?.timestamp ?? null;
+
+  return { latestResult, history, clearHistory, latestAlerts, latestTimestamp };
 }
