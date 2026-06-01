@@ -209,21 +209,8 @@ class VlmHandler:
         return False
 
     def _build_system_prompt(self):
-        """Build the full system prompt, injecting alert rules into the JSON schema."""
-        prompt = self.system_prompt
-        if not self.alert_rules:
-            return prompt
-        rules_text = ", ".join(f'"{rule}"' for rule in self.alert_rules if rule.strip())
-        if not rules_text:
-            return prompt
-        prompt = prompt.replace(
-            "and alerts (array, see below if rules are provided)",
-            f'and alerts (check each condition: [{rules_text}]. '
-            'A condition is triggered if what it describes is visible in the image. '
-            'For each triggered condition add {"rule": "the condition text", "triggered": true, "detail": "what you see"}. '
-            'If none are triggered set alerts to [])'
-        )
-        return prompt
+        """Build the full system prompt. Alert rules are evaluated post-inference."""
+        return self.system_prompt
 
     def _subscribe_to_queries(self):
         """Subscribe to scene query topic."""
@@ -379,6 +366,10 @@ class VlmHandler:
         raw_output = result.get("choices", [{}])[0].get("message", {}).get("content", "")
         response = self._parse_response(raw_output)
 
+        if response and self.alert_rules:
+            alerts = self._evaluate_alerts(image_b64)
+            response["alerts"] = alerts
+
         payload = {
             "timestamp": time.time(),
             "model_id": self.active_model_id,
@@ -394,6 +385,68 @@ class VlmHandler:
 
         self._publish(payload)
 
+    def _evaluate_alerts(self, image_b64):
+        """Evaluate alert rules with a dedicated VLM call."""
+        rules_numbered = "\n".join(f"{i+1}. {r}" for i, r in enumerate(self.alert_rules) if r.strip())
+        if not rules_numbered:
+            return []
+
+        messages = [
+            {"role": "system", "content": (
+                "Look at the image and check each condition below. "
+                "Return a JSON array. For each condition, return "
+                "{\"rule\": \"the condition\", \"triggered\": true/false, \"detail\": \"what you see or why not\"}."
+            )},
+            {"role": "user", "content": [
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"}},
+                {"type": "text", "text": f"Check these conditions:\n{rules_numbered}"},
+            ]},
+        ]
+
+        request_body = {
+            "model": self._serving_model_name or self.active_model_id,
+            "messages": messages,
+            "max_tokens": 256,
+            "temperature": 0.1,
+            "stream": False,
+        }
+
+        try:
+            resp = requests.post(self.vlm_endpoint, json=request_body, timeout=60)
+            if resp.status_code != 200:
+                logger.error("Alert evaluation API error %d", resp.status_code)
+                return []
+            raw = resp.json().get("choices", [{}])[0].get("message", {}).get("content", "")
+        except requests.RequestException as e:
+            logger.error("Alert evaluation failed: %s", e)
+            return []
+
+        try:
+            text = raw.strip()
+            if "```json" in text:
+                text = text.split("```json")[1].split("```")[0].strip()
+            elif "```" in text:
+                text = text.split("```")[1].split("```")[0].strip()
+            parsed = json.loads(text)
+            if not isinstance(parsed, list):
+                parsed = [parsed]
+        except (json.JSONDecodeError, IndexError):
+            logger.warning("Could not parse alert evaluation response")
+            return []
+
+        rules_lower = [r.lower().strip() for r in self.alert_rules]
+        validated = [
+            a for a in parsed
+            if isinstance(a, dict)
+            and a.get("triggered")
+            and any(
+                rule in a.get("rule", "").lower().strip()
+                or a.get("rule", "").lower().strip() in rule
+                for rule in rules_lower
+            )
+        ]
+        return validated
+
     def _parse_response(self, raw_output):
         try:
             text = raw_output.strip()
@@ -403,23 +456,11 @@ class VlmHandler:
                 text = text.split("```")[1].split("```")[0].strip()
             parsed = json.loads(text)
             if "risk_level" in parsed and "summary" in parsed:
-                raw_alerts = parsed.get("alerts", [])
-                rules_lower = [r.lower().strip() for r in self.alert_rules]
-                validated_alerts = [
-                    a for a in raw_alerts
-                    if isinstance(a, dict)
-                    and a.get("triggered")
-                    and any(
-                        rule in a.get("rule", "").lower().strip()
-                        or a.get("rule", "").lower().strip() in rule
-                        for rule in rules_lower
-                    )
-                ]
                 return {
                     "risk_level": parsed["risk_level"],
                     "summary": parsed["summary"],
                     "risks": parsed.get("risks", []),
-                    "alerts": validated_alerts,
+                    "alerts": [],
                 }
         except (json.JSONDecodeError, IndexError, KeyError):
             pass
