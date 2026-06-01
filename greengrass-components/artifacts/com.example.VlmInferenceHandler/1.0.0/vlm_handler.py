@@ -46,6 +46,13 @@ class VlmHandler:
         self.inference_interval = 15
         self.max_tokens = 256
 
+        self.mode = 'continuous'
+        self.trigger_classes = ['person']
+        self.trigger_cooldown = 10
+        self.alert_rules = []
+        self._last_trigger_time = 0
+        self._pending_query = None
+
         logger.info(
             "VlmHandler initialized: thing=%s snapshot_dir=%s endpoint=%s",
             self.thing_name, self.snapshot_dir, self.vlm_endpoint,
@@ -53,6 +60,7 @@ class VlmHandler:
 
     def run(self):
         self._subscribe_to_shadow_delta()
+        self._subscribe_to_cv_inference()
         self._load_config()
 
         while True:
@@ -61,11 +69,21 @@ class VlmHandler:
                 time.sleep(10)
                 continue
 
-            try:
-                self._inference_cycle()
-            except Exception as e:
-                logger.error("VLM inference cycle failed: %s", e)
-                traceback.print_exc()
+            # Handle pending query (pre-empts scheduled assessment)
+            if self._pending_query:
+                try:
+                    self._handle_query(self._pending_query)
+                except Exception as e:
+                    logger.error("Query handling failed: %s", e)
+                self._pending_query = None
+
+            # Only run scheduled inference in continuous mode
+            if self.mode == 'continuous':
+                try:
+                    self._inference_cycle()
+                except Exception as e:
+                    logger.error("VLM inference cycle failed: %s", e)
+                    traceback.print_exc()
 
             time.sleep(self.inference_interval)
 
@@ -117,17 +135,7 @@ class VlmHandler:
             state = payload.get("state", {})
 
             if "vlm_config" in state:
-                vlm_config = state["vlm_config"]
-                if vlm_config.get("system_prompt"):
-                    self.system_prompt = vlm_config["system_prompt"]
-                if vlm_config.get("user_prompt"):
-                    self.user_prompt = vlm_config["user_prompt"]
-                if vlm_config.get("inference_interval"):
-                    self.inference_interval = int(vlm_config["inference_interval"])
-                if vlm_config.get("max_tokens"):
-                    self.max_tokens = int(vlm_config["max_tokens"])
-                logger.info("VLM config updated: interval=%ds, max_tokens=%d", self.inference_interval, self.max_tokens)
-                self._report_vlm_config()
+                self._apply_vlm_config(state["vlm_config"])
 
             if "active_model" in state:
                 new_model = state["active_model"]
@@ -148,6 +156,10 @@ class VlmHandler:
         self.user_prompt = vlm_config.get("user_prompt", "")
         self.inference_interval = vlm_config.get("inference_interval", 15)
         self.max_tokens = vlm_config.get("max_tokens", 256)
+        self.mode = vlm_config.get("mode", "continuous")
+        self.trigger_classes = vlm_config.get("trigger_classes", ["person"])
+        self.trigger_cooldown = vlm_config.get("trigger_cooldown", 10)
+        self.alert_rules = vlm_config.get("alert_rules", [])
 
         self.active_model_id = (
             desired.get("active_model")
@@ -159,6 +171,87 @@ class VlmHandler:
             self._report_vlm_config()
         self._report_active_model()
 
+    def _apply_vlm_config(self, vlm_config):
+        """Apply VLM config fields from shadow delta or initial load."""
+        if vlm_config.get("system_prompt"):
+            self.system_prompt = vlm_config["system_prompt"]
+        if vlm_config.get("user_prompt"):
+            self.user_prompt = vlm_config["user_prompt"]
+        if vlm_config.get("inference_interval"):
+            self.inference_interval = int(vlm_config["inference_interval"])
+        if vlm_config.get("max_tokens"):
+            self.max_tokens = int(vlm_config["max_tokens"])
+        if "mode" in vlm_config:
+            self.mode = vlm_config["mode"]
+        if "trigger_classes" in vlm_config:
+            self.trigger_classes = vlm_config["trigger_classes"]
+        if "trigger_cooldown" in vlm_config:
+            self.trigger_cooldown = int(vlm_config["trigger_cooldown"])
+        if "alert_rules" in vlm_config:
+            self.alert_rules = vlm_config["alert_rules"]
+        logger.info("VLM config updated: mode=%s, interval=%ds, trigger_classes=%s",
+                    self.mode, self.inference_interval, self.trigger_classes)
+        self._report_vlm_config()
+
+    def _should_trigger(self, detections):
+        """Check if CV detections should trigger a VLM assessment."""
+        if self.mode != 'triggered':
+            return False
+        now = time.time()
+        if now - self._last_trigger_time < self.trigger_cooldown:
+            return False
+        for det in detections:
+            if det.get('label', '').lower() in [c.lower() for c in self.trigger_classes]:
+                return True
+        return False
+
+    def _build_system_prompt(self):
+        """Build the full system prompt, injecting alert rules if defined."""
+        prompt = self.system_prompt
+        if not self.alert_rules:
+            return prompt
+        rules_text = "\n".join(f"{i+1}. {rule}" for i, rule in enumerate(self.alert_rules) if rule.strip())
+        if not rules_text:
+            return prompt
+        prompt += (
+            "\n\nAdditionally, evaluate the following alert rules against the scene. "
+            "For each rule that is TRIGGERED, include it in a separate \"alerts\" array in your JSON response. "
+            "Each alert object has: {rule (the original rule text), triggered (boolean), detail (one sentence explaining why it triggered)}. "
+            "Only include rules that are currently triggered.\n\n"
+            f"Rules:\n{rules_text}"
+        )
+        return prompt
+
+    def _handle_query(self, query):
+        """Process a scene query. Implemented in Task 5."""
+        pass
+
+    def _subscribe_to_cv_inference(self):
+        """Subscribe to camera/inference to receive CV detection results."""
+        cv_topic = "camera/inference"
+        self.ipc_client.subscribe_to_iot_core(
+            topic_name=cv_topic,
+            qos="1",
+            on_stream_event=self._on_cv_inference,
+            on_stream_error=lambda e: logger.error("CV inference stream error: %s", e),
+            on_stream_closed=lambda: logger.warning("CV inference stream closed"),
+        )
+        logger.info("Subscribed to CV inference: %s", cv_topic)
+
+    def _on_cv_inference(self, event):
+        """Handle incoming CV inference results — trigger VLM if configured."""
+        if self.mode != 'triggered':
+            return
+        try:
+            payload = json.loads(event.message.payload)
+            detections = payload.get("results", {}).get("detections", [])
+            if self._should_trigger(detections):
+                self._last_trigger_time = time.time()
+                logger.info("CV trigger fired: detected matching classes")
+                self._inference_cycle()
+        except Exception as e:
+            logger.error("Failed to handle CV inference event: %s", e)
+
     def _inference_cycle(self):
         image_b64 = self._get_latest_snapshot_b64()
         if image_b64 is None:
@@ -167,8 +260,9 @@ class VlmHandler:
         start_time = time.time()
 
         messages = []
-        if self.system_prompt:
-            messages.append({"role": "system", "content": self.system_prompt})
+        system_prompt = self._build_system_prompt()
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
 
         user_content = []
         user_content.append({
@@ -232,7 +326,12 @@ class VlmHandler:
                 text = text.split("```")[1].split("```")[0].strip()
             parsed = json.loads(text)
             if "risk_level" in parsed and "summary" in parsed:
-                return parsed
+                return {
+                    "risk_level": parsed["risk_level"],
+                    "summary": parsed["summary"],
+                    "risks": parsed.get("risks", []),
+                    "alerts": parsed.get("alerts", []),
+                }
         except (json.JSONDecodeError, IndexError, KeyError):
             pass
         return None
@@ -278,6 +377,10 @@ class VlmHandler:
                 "user_prompt": self.user_prompt,
                 "inference_interval": self.inference_interval,
                 "max_tokens": self.max_tokens,
+                "mode": self.mode,
+                "trigger_classes": self.trigger_classes,
+                "trigger_cooldown": self.trigger_cooldown,
+                "alert_rules": self.alert_rules,
             }
         })
 
