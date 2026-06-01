@@ -14,17 +14,20 @@ ComponentConfiguration:
     accessControl:
       aws.greengrass.ipc.mqttproxy:
         com.example.VlmInferenceHandler:mqttproxy:1:
-          policyDescription: 'Publish VLM analysis results to IoT Core'
+          policyDescription: 'Publish VLM analysis results and query responses to IoT Core'
           operations:
             - 'aws.greengrass#PublishToIoTCore'
           resources:
             - 'camera/vlm'
+            - 'camera/vlm-response'
         com.example.VlmInferenceHandler:mqttproxy:2:
-          policyDescription: 'Subscribe to vlm-config shadow delta for config changes'
+          policyDescription: 'Subscribe to shadow delta, CV inference triggers, and scene queries'
           operations:
             - 'aws.greengrass#SubscribeToIoTCore'
           resources:
             - '$aws/things/*/shadow/name/vlm-config/update/delta'
+            - 'camera/inference'
+            - 'camera/vlm-query'
 Manifests:
 - Platform:
     os: all
