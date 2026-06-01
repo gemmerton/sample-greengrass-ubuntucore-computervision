@@ -127,3 +127,29 @@ class TestAlertRules:
         })
         result = handler._parse_response(raw)
         assert result.get('alerts', []) == []
+
+
+class TestQueryHandling:
+    def test_pending_query_set_on_message(self, handler):
+        query = {'query_id': 'abc123', 'question': 'How many workers?', 'timestamp': 1717200000}
+        event = MagicMock()
+        event.message.payload = json.dumps(query).encode('utf-8')
+        handler._on_query_message(event)
+        assert handler._pending_query == query
+
+    def test_latest_query_wins(self, handler):
+        q1 = {'query_id': 'q1', 'question': 'First?', 'timestamp': 1717200000}
+        q2 = {'query_id': 'q2', 'question': 'Second?', 'timestamp': 1717200001}
+        event1 = MagicMock()
+        event1.message.payload = json.dumps(q1).encode('utf-8')
+        event2 = MagicMock()
+        event2.message.payload = json.dumps(q2).encode('utf-8')
+        handler._on_query_message(event1)
+        handler._on_query_message(event2)
+        assert handler._pending_query['query_id'] == 'q2'
+
+    def test_invalid_query_ignored(self, handler):
+        event = MagicMock()
+        event.message.payload = json.dumps({'not_a_query': True}).encode('utf-8')
+        handler._on_query_message(event)
+        assert handler._pending_query is None

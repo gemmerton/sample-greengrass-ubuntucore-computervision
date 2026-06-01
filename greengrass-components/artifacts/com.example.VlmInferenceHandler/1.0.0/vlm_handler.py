@@ -25,6 +25,8 @@ logging.basicConfig(level=logging.INFO)
 
 SHADOW_NAME = "vlm-config"
 VLM_TOPIC = "camera/vlm"
+QUERY_TOPIC = "camera/vlm-query"
+RESPONSE_TOPIC = "camera/vlm-response"
 
 
 class VlmHandler:
@@ -61,6 +63,7 @@ class VlmHandler:
     def run(self):
         self._subscribe_to_shadow_delta()
         self._subscribe_to_cv_inference()
+        self._subscribe_to_queries()
         self._load_config()
 
         while True:
@@ -222,9 +225,83 @@ class VlmHandler:
         )
         return prompt
 
+    def _subscribe_to_queries(self):
+        """Subscribe to scene query topic."""
+        self.ipc_client.subscribe_to_iot_core(
+            topic_name=QUERY_TOPIC,
+            qos="1",
+            on_stream_event=self._on_query_message,
+            on_stream_error=lambda e: logger.error("Query stream error: %s", e),
+            on_stream_closed=lambda: logger.warning("Query stream closed"),
+        )
+        logger.info("Subscribed to query topic: %s", QUERY_TOPIC)
+
+    def _on_query_message(self, event):
+        """Receive a scene query — stores latest only."""
+        try:
+            payload = json.loads(event.message.payload)
+            if 'query_id' in payload and 'question' in payload:
+                self._pending_query = payload
+                logger.info("Query received: %s", payload.get('question', '')[:80])
+        except Exception as e:
+            logger.error("Failed to parse query message: %s", e)
+
     def _handle_query(self, query):
-        """Process a scene query. Implemented in Task 5."""
-        pass
+        """Process a scene query: send question + image to VLM, publish response."""
+        image_b64 = self._get_latest_snapshot_b64()
+        if image_b64 is None:
+            logger.warning("No snapshot available for query")
+            return
+
+        start_time = time.time()
+
+        messages = [
+            {"role": "system", "content": "Answer the user's question about the image concisely and factually."},
+            {"role": "user", "content": [
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"}},
+                {"type": "text", "text": query["question"]},
+            ]},
+        ]
+
+        request_body = {
+            "model": self._serving_model_name or self.active_model_id,
+            "messages": messages,
+            "max_tokens": self.max_tokens,
+            "temperature": 0.1,
+            "stream": False,
+        }
+
+        try:
+            resp = requests.post(self.vlm_endpoint, json=request_body, timeout=120)
+            if resp.status_code != 200:
+                logger.error("VLM query API error %d: %s", resp.status_code, resp.text[:200])
+                return
+            result = resp.json()
+        except requests.RequestException as e:
+            logger.error("VLM query request failed: %s", e)
+            return
+
+        inference_time_ms = round((time.time() - start_time) * 1000, 1)
+        answer = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+
+        response_payload = {
+            "query_id": query["query_id"],
+            "question": query["question"],
+            "answer": answer,
+            "timestamp": time.time(),
+            "inference_time_ms": inference_time_ms,
+        }
+
+        try:
+            encoded = json.dumps(response_payload).encode("utf-8")
+            self.ipc_client.publish_to_iot_core(
+                topic_name=RESPONSE_TOPIC,
+                qos="1",
+                payload=encoded,
+            )
+            logger.info("Published query response: %s (%.1fs)", query["query_id"], inference_time_ms / 1000)
+        except Exception as e:
+            logger.error("Failed to publish query response: %s", e)
 
     def _subscribe_to_cv_inference(self):
         """Subscribe to camera/inference to receive CV detection results."""
