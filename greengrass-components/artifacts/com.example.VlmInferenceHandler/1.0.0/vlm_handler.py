@@ -217,13 +217,10 @@ class VlmHandler:
         if not rules_text:
             return prompt
         prompt += (
-            "\n\n---\nSEPARATE TASK - ALERT RULES (do NOT mix these into the risks array above):\n"
-            "Check each rule below against what you see in the image. "
-            "Do not include alert rules in the risks array. "
-            "Add a separate \"alerts\" array to your JSON. "
-            "For each rule whose condition you can see in the image, add: "
-            "{\"rule\": \"exact rule text\", \"triggered\": true, \"detail\": \"brief description of what you see\"}. "
-            "If none apply, set \"alerts\": [].\n\n"
+            "\n\nALERT RULES - check each rule and populate the \"alerts\" array:\n"
+            "For each rule whose condition is visible in the image, add to the alerts array: "
+            "{\"rule\": \"<copy the rule text>\", \"triggered\": true, \"detail\": \"<what you see>\"}. "
+            "If no rules match, set \"alerts\": [].\n\n"
             f"Rules:\n{rules_text}"
         )
         return prompt
