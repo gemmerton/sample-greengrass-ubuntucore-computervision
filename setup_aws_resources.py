@@ -403,6 +403,7 @@ class AWSResourcesSetup:
                         "iot:Connect",
                         "iot:Subscribe",
                         "iot:Receive",
+                        "iot:Publish",
                         "iot:AttachPolicy",
                         "iot:DescribeEndpoint",
                         "iot:GetThingShadow",
