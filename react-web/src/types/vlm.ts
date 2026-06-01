@@ -7,10 +7,17 @@ export interface Risk {
   category: RiskCategory | string;
 }
 
+export interface VlmAlert {
+  rule: string;
+  triggered: boolean;
+  detail: string;
+}
+
 export interface VlmResponse {
   risk_level: RiskLevel;
   summary: string;
   risks: Risk[];
+  alerts?: VlmAlert[];
 }
 
 export interface VlmResult {
@@ -31,4 +38,22 @@ export interface VlmConfig {
   user_prompt: string;
   inference_interval: number;
   max_tokens: number;
+  mode: 'continuous' | 'triggered';
+  trigger_classes: string[];
+  trigger_cooldown: number;
+  alert_rules: string[];
+}
+
+export interface VlmQuery {
+  query_id: string;
+  question: string;
+  timestamp: number;
+}
+
+export interface VlmQueryResponse {
+  query_id: string;
+  question: string;
+  answer: string;
+  timestamp: number;
+  inference_time_ms: number;
 }
