@@ -307,7 +307,8 @@ class AWSResourcesSetup:
                     "Action": [
                         "iot:Connect",
                         "iot:Subscribe",
-                        "iot:Receive"
+                        "iot:Receive",
+                        "iot:Publish"
                     ],
                     "Resource": [
                         f"arn:aws:iot:{self.aws_region}:{self.account_id}:client/*",
