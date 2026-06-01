@@ -218,14 +218,13 @@ class VlmHandler:
             return prompt
         prompt += (
             "\n\n---\nSEPARATE TASK - ALERT RULES (do NOT mix these into the risks array above):\n"
-            "After completing the risk assessment, also check the following alert rules against the image. "
-            "Alert rules are NOT safety risks - do not include them in the risks array. "
-            "Only trigger a rule if its condition is CLEARLY AND VISIBLY TRUE in the image. "
-            "If you cannot see the condition or are unsure, do NOT trigger it. "
+            "Check each rule below against what you see in the image. "
+            "Do not include alert rules in the risks array. "
             "Add a separate \"alerts\" array to your JSON. "
-            "For each rule that is clearly true, add: {\"rule\": \"exact rule text\", \"triggered\": true, \"detail\": \"what you see that confirms it\"}. "
-            "If no rules are clearly confirmed by the image, set \"alerts\": [].\n\n"
-            f"Alert rules to check:\n{rules_text}"
+            "For each rule whose condition you can see in the image, add: "
+            "{\"rule\": \"exact rule text\", \"triggered\": true, \"detail\": \"brief description of what you see\"}. "
+            "If none apply, set \"alerts\": [].\n\n"
+            f"Rules:\n{rules_text}"
         )
         return prompt
 
@@ -408,11 +407,16 @@ class VlmHandler:
             parsed = json.loads(text)
             if "risk_level" in parsed and "summary" in parsed:
                 raw_alerts = parsed.get("alerts", [])
+                rules_lower = [r.lower().strip() for r in self.alert_rules]
                 validated_alerts = [
                     a for a in raw_alerts
                     if isinstance(a, dict)
                     and a.get("triggered")
-                    and a.get("rule", "") in self.alert_rules
+                    and any(
+                        rule in a.get("rule", "").lower().strip()
+                        or a.get("rule", "").lower().strip() in rule
+                        for rule in rules_lower
+                    )
                 ]
                 return {
                     "risk_level": parsed["risk_level"],
