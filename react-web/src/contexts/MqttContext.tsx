@@ -134,7 +134,10 @@ export const MqttProvider: React.FC<MqttProviderProps> = ({
   /**
    * Handle incoming MQTT messages
    */
+  const IGNORED_TOPICS = ['camera/kvs-status'];
+
   const handleMessage = useCallback((message: MqttMessage) => {
+    if (IGNORED_TOPICS.includes(message.topic)) return;
     console.log('Received MQTT message:', message);
     dispatch({ type: 'ADD_MESSAGE', payload: message });
   }, []);
