@@ -114,7 +114,6 @@ const DashboardContent: React.FC<DashboardProps> = ({
 
           {credentials && (
             <>
-              <AlertBanner alerts={latestAlerts} timestamp={latestTimestamp} />
               <section ref={contentRef} className="dashboard__content" aria-label="Live video and analysis">
                 <article className="dashboard__card dashboard__card--video" style={{ position: 'relative' }}>
                   <KvsPlayer
@@ -320,6 +319,8 @@ const DashboardContent: React.FC<DashboardProps> = ({
           />
         </div>
       </aside>
+
+      <AlertBanner alerts={latestAlerts} timestamp={latestTimestamp} />
     </div>
   );
 };
