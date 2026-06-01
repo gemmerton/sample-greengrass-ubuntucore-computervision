@@ -8,6 +8,8 @@ import { InferenceOverlay } from './InferenceOverlay';
 import { EdgeLatencyIndicator } from './EdgeLatencyIndicator';
 import { VlmPanel } from './VlmPanel';
 import { VlmTimeline } from './VlmTimeline';
+import { AlertBanner } from './AlertBanner';
+import { SceneQueryPanel } from './SceneQueryPanel';
 import { VlmPromptEditor } from '../controls/VlmPromptEditor';
 import { useInferenceResults } from '../../hooks/useInferenceResults';
 import { useVlmResults } from '../../hooks/useVlmResults';
@@ -49,7 +51,7 @@ const DashboardContent: React.FC<DashboardProps> = ({
   const [messagePanelOpen, setMessagePanelOpen] = useState<boolean>(false);
   const [videoElement, setVideoElement] = useState<HTMLVideoElement | null>(null);
   const { latestResult } = useInferenceResults();
-  const { latestResult: vlmLatestResult, history: vlmHistory } = useVlmResults();
+  const { latestResult: vlmLatestResult, history: vlmHistory, latestAlerts, latestTimestamp } = useVlmResults();
 
   /**
    * Handle MQTT topic change
@@ -98,6 +100,7 @@ const DashboardContent: React.FC<DashboardProps> = ({
 
           {credentials && (
             <>
+              <AlertBanner alerts={latestAlerts} timestamp={latestTimestamp} />
               <section className="dashboard__content" aria-label="Live video and analysis">
                 <article className="dashboard__card dashboard__card--video" style={{ position: 'relative' }}>
                   <KvsPlayer
@@ -110,6 +113,7 @@ const DashboardContent: React.FC<DashboardProps> = ({
                 </article>
                 <aside className="dashboard__vlm-panel" aria-label="VLM Risk Assessment">
                   <VlmPanel latestResult={vlmLatestResult} />
+                  <SceneQueryPanel />
                 </aside>
               </section>
               <section className="dashboard__timeline" aria-label="Analysis timeline">
