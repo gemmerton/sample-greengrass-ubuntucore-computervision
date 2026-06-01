@@ -21,15 +21,20 @@
 }
 
 .scene-query-panel__clear {
-  background: none;
-  border: none;
+  background: var(--bg-subtle, #2a2a3e);
+  border: 1px solid var(--border, #444);
+  border-radius: 4px;
   color: var(--text-muted, #888);
   font-size: 0.75rem;
+  padding: 4px 10px;
+  margin-right: 4px;
   cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
 }
 
 .scene-query-panel__clear:hover {
   color: var(--text-primary, #eee);
+  border-color: var(--text-muted, #888);
 }
 
 .scene-query-panel__history {
