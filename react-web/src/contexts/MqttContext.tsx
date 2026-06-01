@@ -8,6 +8,7 @@ import React, {
   useReducer,
   useEffect,
   useCallback,
+  useRef,
   ReactNode,
 } from 'react';
 import { MqttMessage, MqttState, ConnectionStatus } from '../types/mqtt';
@@ -135,10 +136,14 @@ export const MqttProvider: React.FC<MqttProviderProps> = ({
    * Handle incoming MQTT messages
    */
   const IGNORED_TOPICS = ['camera/kvs-status'];
+  const hasReceivedMessage = useRef(false);
 
   const handleMessage = useCallback((message: MqttMessage) => {
     if (IGNORED_TOPICS.includes(message.topic)) return;
-    console.log('Received MQTT message:', message);
+    if (!hasReceivedMessage.current) {
+      hasReceivedMessage.current = true;
+      dispatch({ type: 'SET_CONNECTED' });
+    }
     dispatch({ type: 'ADD_MESSAGE', payload: message });
   }, []);
 

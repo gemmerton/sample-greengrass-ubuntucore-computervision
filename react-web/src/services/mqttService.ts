@@ -298,13 +298,6 @@ export class MqttService {
       );
 
       console.log(' Successfully subscribed to topic:', topic);
-      console.log(' Now listening for messages on:', topic);
-
-      // Send a welcome message to show the connection is working
-      setTimeout(() => {
-        console.log(' Sending welcome message for topic:', topic);
-        this.simulateWelcomeMessage();
-      }, 1000);
     } catch (error) {
       console.error('Failed to subscribe to topic:', topic, error);
       console.error('Subscription error details:', error);
