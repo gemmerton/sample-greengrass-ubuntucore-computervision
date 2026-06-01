@@ -404,11 +404,18 @@ class VlmHandler:
                 text = text.split("```")[1].split("```")[0].strip()
             parsed = json.loads(text)
             if "risk_level" in parsed and "summary" in parsed:
+                raw_alerts = parsed.get("alerts", [])
+                validated_alerts = [
+                    a for a in raw_alerts
+                    if isinstance(a, dict)
+                    and a.get("triggered")
+                    and a.get("rule", "") in self.alert_rules
+                ]
                 return {
                     "risk_level": parsed["risk_level"],
                     "summary": parsed["summary"],
                     "risks": parsed.get("risks", []),
-                    "alerts": parsed.get("alerts", []),
+                    "alerts": validated_alerts,
                 }
         except (json.JSONDecodeError, IndexError, KeyError):
             pass
