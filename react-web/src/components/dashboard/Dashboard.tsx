@@ -50,6 +50,7 @@ const DashboardContent: React.FC<DashboardProps> = ({
   const [activeLeftPanel, setActiveLeftPanel] = useState<'general' | 'cv' | 'vlm' | null>(null);
   const [messagePanelOpen, setMessagePanelOpen] = useState<boolean>(false);
   const [videoElement, setVideoElement] = useState<HTMLVideoElement | null>(null);
+  const [vlmTab, setVlmTab] = useState<'assessment' | 'query'>('assessment');
   const { latestResult } = useInferenceResults();
   const { latestResult: vlmLatestResult, history: vlmHistory, latestAlerts, latestTimestamp } = useVlmResults();
 
@@ -112,8 +113,24 @@ const DashboardContent: React.FC<DashboardProps> = ({
                   <InferenceOverlay result={latestResult} videoElement={videoElement} vlmRiskLevel={vlmLatestResult?.response?.risk_level ?? null} />
                 </article>
                 <aside className="dashboard__vlm-panel" aria-label="VLM Risk Assessment">
-                  <VlmPanel latestResult={vlmLatestResult} />
-                  <SceneQueryPanel />
+                  <div className="dashboard__vlm-tabs">
+                    <button
+                      className={`dashboard__vlm-tab ${vlmTab === 'assessment' ? 'dashboard__vlm-tab--active' : ''}`}
+                      onClick={() => setVlmTab('assessment')}
+                      type="button"
+                    >
+                      Assessment
+                    </button>
+                    <button
+                      className={`dashboard__vlm-tab ${vlmTab === 'query' ? 'dashboard__vlm-tab--active' : ''}`}
+                      onClick={() => setVlmTab('query')}
+                      type="button"
+                    >
+                      Scene Query
+                    </button>
+                  </div>
+                  {vlmTab === 'assessment' && <VlmPanel latestResult={vlmLatestResult} />}
+                  {vlmTab === 'query' && <SceneQueryPanel />}
                 </aside>
               </section>
               <section className="dashboard__timeline" aria-label="Analysis timeline">

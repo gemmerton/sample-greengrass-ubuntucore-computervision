@@ -148,10 +148,44 @@
 .dashboard__vlm-panel {
   min-height: 300px;
   max-height: 480px;
-  overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  overflow: hidden;
+}
+
+.dashboard__vlm-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--border, #333);
+  flex-shrink: 0;
+}
+
+.dashboard__vlm-tab {
+  flex: 1;
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-muted, #888);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.dashboard__vlm-tab--active {
+  color: var(--text-primary, #eee);
+  border-bottom-color: var(--accent, #3b82f6);
+}
+
+.dashboard__vlm-tab:hover:not(.dashboard__vlm-tab--active) {
+  color: var(--text-secondary, #bbb);
+}
+
+.dashboard__vlm-panel > .vlm-panel,
+.dashboard__vlm-panel > .scene-query-panel {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
 }
 
 .dashboard__timeline {
