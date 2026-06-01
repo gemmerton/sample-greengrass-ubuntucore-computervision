@@ -217,12 +217,13 @@ class VlmHandler:
         if not rules_text:
             return prompt
         prompt += (
-            "\n\nIMPORTANT: Independently from the risk assessment above, you MUST also evaluate the following alert rules. "
-            "These alerts are separate from risks. Check each rule against what you see in the image. "
-            "If a rule's condition is TRUE in the image, include it in an \"alerts\" array in your JSON response. "
-            "Each alert object has: {\"rule\": \"the original rule text\", \"triggered\": true, \"detail\": \"one sentence\"}. "
-            "You MUST include the alerts array even if risks is empty. If no rules are triggered, set \"alerts\": [].\n\n"
-            f"Rules:\n{rules_text}"
+            "\n\n---\nSEPARATE TASK - ALERT RULES (do NOT mix these into the risks array above):\n"
+            "After completing the risk assessment, also check the following alert rules against the image. "
+            "Alert rules are NOT safety risks - do not include them in the risks array. "
+            "Add a separate \"alerts\" array to your JSON. "
+            "For each rule that is TRUE, add: {\"rule\": \"exact rule text\", \"triggered\": true, \"detail\": \"one sentence\"}. "
+            "If no rules are triggered, set \"alerts\": [].\n\n"
+            f"Alert rules to check:\n{rules_text}"
         )
         return prompt
 
