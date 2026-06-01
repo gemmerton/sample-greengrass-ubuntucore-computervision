@@ -141,12 +141,17 @@
   display: grid;
   grid-template-columns: 1fr 320px;
   gap: 16px;
-  align-items: stretch;
+  align-items: start;
   width: 100%;
 }
 
 .dashboard__vlm-panel {
   min-height: 300px;
+  max-height: 480px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .dashboard__timeline {
