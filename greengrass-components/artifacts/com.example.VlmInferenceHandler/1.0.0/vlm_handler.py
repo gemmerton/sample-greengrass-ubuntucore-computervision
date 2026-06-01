@@ -218,8 +218,10 @@ class VlmHandler:
             return prompt
         prompt = prompt.replace(
             "and alerts (array, see below if rules are provided)",
-            f'and alerts (for each of these conditions that is TRUE in the image: [{rules_text}], '
-            'add {"rule": "the condition", "triggered": true, "detail": "what you see"}; if none are true set alerts to [])'
+            f'and alerts (check each condition: [{rules_text}]. '
+            'A condition is triggered if what it describes is visible in the image. '
+            'For each triggered condition add {"rule": "the condition text", "triggered": true, "detail": "what you see"}. '
+            'If none are triggered set alerts to [])'
         )
         return prompt
 
