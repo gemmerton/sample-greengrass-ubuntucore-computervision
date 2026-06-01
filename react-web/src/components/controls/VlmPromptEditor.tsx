@@ -29,6 +29,10 @@ export const VlmPromptEditor: React.FC<VlmPromptEditorProps> = ({ thingName }) =
   const [userPrompt, setUserPrompt] = useState('');
   const [inferenceInterval, setInferenceInterval] = useState(15);
   const [maxTokens, setMaxTokens] = useState(256);
+  const [mode, setMode] = useState<'continuous' | 'triggered'>('continuous');
+  const [triggerClasses, setTriggerClasses] = useState<string[]>(['person']);
+  const [triggerCooldown, setTriggerCooldown] = useState(10);
+  const [alertRules, setAlertRules] = useState<string[]>([]);
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [loaded, setLoaded] = useState(false);
 
@@ -44,6 +48,10 @@ export const VlmPromptEditor: React.FC<VlmPromptEditorProps> = ({ thingName }) =
         setUserPrompt(config.user_prompt);
         setInferenceInterval(config.inference_interval);
         setMaxTokens(config.max_tokens);
+        setMode(config.mode);
+        setTriggerClasses(config.trigger_classes);
+        setTriggerCooldown(config.trigger_cooldown);
+        setAlertRules(config.alert_rules);
       }
       setLoaded(true);
     };
@@ -61,6 +69,10 @@ export const VlmPromptEditor: React.FC<VlmPromptEditorProps> = ({ thingName }) =
         user_prompt: userPrompt,
         inference_interval: inferenceInterval,
         max_tokens: maxTokens,
+        mode,
+        trigger_classes: triggerClasses,
+        trigger_cooldown: triggerCooldown,
+        alert_rules: alertRules,
       };
       await iotShadowService.setVlmConfig(thingName, credentials, region, config);
       setSaveState('saved');
@@ -98,6 +110,53 @@ export const VlmPromptEditor: React.FC<VlmPromptEditorProps> = ({ thingName }) =
           ))}
         </select>
       </div>
+
+      <div className="vlm-prompt-editor__field">
+        <label className="vlm-prompt-editor__label">Assessment Mode</label>
+        <div className="vlm-prompt-editor__mode-toggle">
+          <button
+            className={`vlm-prompt-editor__mode-btn ${mode === 'continuous' ? 'vlm-prompt-editor__mode-btn--active' : ''}`}
+            onClick={() => setMode('continuous')}
+            type="button"
+          >
+            Continuous
+          </button>
+          <button
+            className={`vlm-prompt-editor__mode-btn ${mode === 'triggered' ? 'vlm-prompt-editor__mode-btn--active' : ''}`}
+            onClick={() => setMode('triggered')}
+            type="button"
+          >
+            CV-Triggered
+          </button>
+        </div>
+      </div>
+
+      {mode === 'triggered' && (
+        <div className="vlm-prompt-editor__trigger-config">
+          <div className="vlm-prompt-editor__field">
+            <label className="vlm-prompt-editor__label">Trigger Classes</label>
+            <input
+              type="text"
+              className="vlm-prompt-editor__input"
+              value={triggerClasses.join(', ')}
+              onChange={(e) => setTriggerClasses(e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
+              placeholder="person, truck, excavator"
+            />
+            <span className="vlm-prompt-editor__hint">Comma-separated CV detection labels</span>
+          </div>
+          <div className="vlm-prompt-editor__field">
+            <label className="vlm-prompt-editor__label">Cooldown (s)</label>
+            <input
+              type="number"
+              className="vlm-prompt-editor__input"
+              value={triggerCooldown}
+              onChange={(e) => setTriggerCooldown(Math.max(5, parseInt(e.target.value) || 10))}
+              min={5}
+              max={120}
+            />
+          </div>
+        </div>
+      )}
 
       <div className="vlm-prompt-editor__field">
         <label className="vlm-prompt-editor__label">System Prompt</label>
@@ -141,6 +200,44 @@ export const VlmPromptEditor: React.FC<VlmPromptEditorProps> = ({ thingName }) =
             min={64}
             max={1024}
           />
+        </div>
+      </div>
+
+      <div className="vlm-prompt-editor__field">
+        <label className="vlm-prompt-editor__label">Alert Rules (max 3)</label>
+        <div className="vlm-prompt-editor__alert-rules">
+          {alertRules.map((rule, i) => (
+            <div key={i} className="vlm-prompt-editor__alert-rule-row">
+              <input
+                type="text"
+                className="vlm-prompt-editor__input"
+                value={rule}
+                onChange={(e) => {
+                  const updated = [...alertRules];
+                  updated[i] = e.target.value;
+                  setAlertRules(updated);
+                }}
+                placeholder="e.g. Alert if anyone is in the trench without a hard hat"
+              />
+              <button
+                className="vlm-prompt-editor__rule-remove"
+                onClick={() => setAlertRules(alertRules.filter((_, idx) => idx !== i))}
+                type="button"
+                aria-label="Remove rule"
+              >
+                &times;
+              </button>
+            </div>
+          ))}
+          {alertRules.length < 3 && (
+            <button
+              className="vlm-prompt-editor__rule-add"
+              onClick={() => setAlertRules([...alertRules, ''])}
+              type="button"
+            >
+              + Add Rule
+            </button>
+          )}
         </div>
       </div>
 
