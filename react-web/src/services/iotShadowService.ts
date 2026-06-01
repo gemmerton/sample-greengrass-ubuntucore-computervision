@@ -88,6 +88,10 @@ export function parseVlmConfigShadow(payload: any): VlmConfigShadowState {
         user_prompt: rawVlmConfig.user_prompt ?? '',
         inference_interval: rawVlmConfig.inference_interval ?? 15,
         max_tokens: rawVlmConfig.max_tokens ?? 256,
+        mode: rawVlmConfig.mode ?? 'continuous',
+        trigger_classes: Array.isArray(rawVlmConfig.trigger_classes) ? rawVlmConfig.trigger_classes : ['person'],
+        trigger_cooldown: rawVlmConfig.trigger_cooldown ?? 10,
+        alert_rules: Array.isArray(rawVlmConfig.alert_rules) ? rawVlmConfig.alert_rules : [],
       }
     : null;
 
