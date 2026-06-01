@@ -3,7 +3,7 @@
  * Redesigned: content-first layout with collapsible settings panel
  */
 
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { InferenceOverlay } from './InferenceOverlay';
 import { EdgeLatencyIndicator } from './EdgeLatencyIndicator';
 import { VlmPanel } from './VlmPanel';
@@ -51,6 +51,19 @@ const DashboardContent: React.FC<DashboardProps> = ({
   const [messagePanelOpen, setMessagePanelOpen] = useState<boolean>(false);
   const [videoElement, setVideoElement] = useState<HTMLVideoElement | null>(null);
   const [vlmTab, setVlmTab] = useState<'assessment' | 'query'>('assessment');
+  const contentRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    if (!videoElement) return;
+    const observer = new ResizeObserver(() => {
+      const h = videoElement.getBoundingClientRect().height;
+      if (contentRef.current && h > 0) {
+        contentRef.current.style.setProperty('--video-height', `${h}px`);
+      }
+    });
+    observer.observe(videoElement);
+    return () => observer.disconnect();
+  }, [videoElement]);
   const { latestResult } = useInferenceResults();
   const { latestResult: vlmLatestResult, history: vlmHistory, latestAlerts, latestTimestamp } = useVlmResults();
 
@@ -102,7 +115,7 @@ const DashboardContent: React.FC<DashboardProps> = ({
           {credentials && (
             <>
               <AlertBanner alerts={latestAlerts} timestamp={latestTimestamp} />
-              <section className="dashboard__content" aria-label="Live video and analysis">
+              <section ref={contentRef} className="dashboard__content" aria-label="Live video and analysis">
                 <article className="dashboard__card dashboard__card--video" style={{ position: 'relative' }}>
                   <KvsPlayer
                     streamName={(import.meta as any).env?.VITE_KVS_STREAM_NAME ?? ''}
@@ -133,9 +146,9 @@ const DashboardContent: React.FC<DashboardProps> = ({
                   {vlmTab === 'query' && <SceneQueryPanel />}
                 </aside>
               </section>
-              <section className="dashboard__timeline" aria-label="Analysis timeline">
+              {/* <section className="dashboard__timeline" aria-label="Analysis timeline">
                 <VlmTimeline history={vlmHistory} />
-              </section>
+              </section> */}
             </>
           )}
 

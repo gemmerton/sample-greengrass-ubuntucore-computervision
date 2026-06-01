@@ -1,7 +1,4 @@
 .vlm-panel {
-  background: var(--card-bg, #1a1a2e);
-  border: 1px solid var(--border, #333);
-  border-radius: 8px;
   padding: 16px;
   display: flex;
   flex-direction: column;

@@ -146,11 +146,13 @@
 }
 
 .dashboard__vlm-panel {
-  min-height: 300px;
-  max-height: 480px;
+  max-height: var(--video-height, 400px);
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  border: 1px solid var(--border, #333);
+  border-radius: 8px;
+  background: var(--card-bg, #1a1a2e);
 }
 
 .dashboard__vlm-tabs {
