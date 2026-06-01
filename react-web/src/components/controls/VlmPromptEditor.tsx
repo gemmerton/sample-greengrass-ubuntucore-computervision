@@ -28,7 +28,7 @@ export const VlmPromptEditor: React.FC<VlmPromptEditorProps> = ({ thingName }) =
   const [systemPrompt, setSystemPrompt] = useState('');
   const [userPrompt, setUserPrompt] = useState('');
   const [inferenceInterval, setInferenceInterval] = useState(15);
-  const [maxTokens, setMaxTokens] = useState(256);
+  const [maxTokens, setMaxTokens] = useState(512);
   const [mode, setMode] = useState<'continuous' | 'triggered'>('continuous');
   const [triggerClasses, setTriggerClasses] = useState<string[]>(['person']);
   const [triggerCooldown, setTriggerCooldown] = useState(10);

@@ -46,7 +46,7 @@ class VlmHandler:
         self.system_prompt = ""
         self.user_prompt = ""
         self.inference_interval = 15
-        self.max_tokens = 256
+        self.max_tokens = 512
 
         self.mode = 'continuous'
         self.trigger_classes = ['person']
@@ -158,7 +158,7 @@ class VlmHandler:
         self.system_prompt = vlm_config.get("system_prompt", "")
         self.user_prompt = vlm_config.get("user_prompt", "")
         self.inference_interval = vlm_config.get("inference_interval", 15)
-        self.max_tokens = vlm_config.get("max_tokens", 256)
+        self.max_tokens = vlm_config.get("max_tokens", 512)
         self.mode = vlm_config.get("mode", "continuous")
         self.trigger_classes = vlm_config.get("trigger_classes", ["person"])
         self.trigger_cooldown = vlm_config.get("trigger_cooldown", 10)
