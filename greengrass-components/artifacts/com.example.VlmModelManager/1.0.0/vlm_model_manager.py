@@ -78,6 +78,27 @@ class VlmModelManager:
             list(self.reported_models.keys()), self.active_model,
         )
 
+        # Stop all non-active VLM snap services to prevent port conflicts
+        self._stop_non_active_services()
+
+    def _stop_non_active_services(self):
+        """Stop all installed VLM snap services that are not the active model.
+
+        Prevents port 9090 conflicts when multiple VLM snaps have their services
+        auto-enabled (e.g. after snap install/refresh).
+        """
+        for model_id in self.reported_models:
+            if model_id == self.active_model:
+                continue
+            if self.reported_models[model_id].get("status") != "ready":
+                continue
+            try:
+                if self.snapd.is_installed(model_id):
+                    self.snapd.stop_snap_service(model_id)
+                    logger.info("Stopped non-active VLM snap '%s' to prevent port conflict", model_id)
+            except Exception as e:
+                logger.warning("Failed to stop non-active snap '%s': %s", model_id, e)
+
     def _subscribe_to_shadow_delta(self):
         if not self.thing_name:
             logger.error("AWS_IOT_THING_NAME not set")

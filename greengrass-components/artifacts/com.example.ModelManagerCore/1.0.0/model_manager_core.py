@@ -126,7 +126,8 @@ class ModelManagerCore:
 
         Handles the case where a delta was published before this component
         started (e.g. fresh device, or component restart after transient failure).
-        Also recovers models stuck in 'failed' status whose files are now present.
+        Also recovers models stuck in 'failed' status whose files are now present,
+        and detects models marked 'ready' whose component paths are no longer accessible.
         """
         if not self.thing_name:
             return
@@ -142,6 +143,9 @@ class ModelManagerCore:
 
         # Recover models that are reported as 'failed' but whose files exist
         self._recover_failed_models(reported)
+
+        # Detect models marked 'ready' whose paths are no longer accessible
+        self._validate_ready_models(reported)
 
         if not desired and not delta:
             return
@@ -194,6 +198,42 @@ class ModelManagerCore:
 
         if recovered:
             logger.info("Startup recovery complete - updated shadow reported state")
+
+    def _validate_ready_models(self, reported):
+        """Check models with 'ready' status still have accessible component paths.
+
+        After a snap reinstall, sideloaded components are lost but the shadow
+        still reports them as 'ready'. This detects that condition and clears
+        the stale reported state so reconciliation will reinstall them.
+        """
+        models = reported.get("models", {})
+        invalidated = []
+
+        for model_id, entry in models.items():
+            if not isinstance(entry, dict) or entry.get("status") != "ready":
+                continue
+
+            local_path = entry.get("model_metadata", {}).get("local_path", "")
+            if not local_path:
+                continue
+
+            if not os.path.isdir(local_path):
+                logger.warning(
+                    "Model '%s' reported as ready but path '%s' is not accessible - "
+                    "marking for reinstall",
+                    model_id, local_path,
+                )
+                invalidated.append(model_id)
+
+        if invalidated:
+            for model_id in invalidated:
+                if model_id in self.reported_models:
+                    del self.reported_models[model_id]
+            self._update_shadow_reported()
+            logger.info(
+                "Cleared stale model state for %s - reconciliation will reinstall",
+                invalidated,
+            )
 
     def _build_metadata_from_manifest(self, manifest, model_id, component_path):
         """Build model_metadata dict from a manifest.json file."""
