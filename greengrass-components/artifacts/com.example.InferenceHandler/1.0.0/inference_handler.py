@@ -270,6 +270,7 @@ class InferenceHandler:
     def _preprocess(self, frame, input_shape):
         dtype_str = self.model_metadata.get("input_dtype", "float32")
         out_dtype = np.uint8 if dtype_str == "uint8" else np.float32
+        normalize = self.model_metadata.get("normalize", False)
 
         if len(input_shape) == 4:
             _, c_or_h, h_or_w, w_or_c = input_shape
@@ -279,13 +280,19 @@ class InferenceHandler:
                 resized = cv2.resize(frame, (target_w, target_h))
                 rgb = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
                 transposed = np.transpose(rgb, (2, 0, 1))
-                return np.expand_dims(transposed, axis=0).astype(out_dtype)
+                result = np.expand_dims(transposed, axis=0).astype(out_dtype)
+                if normalize:
+                    result = result / 255.0
+                return result
             else:
                 # NHWC layout
                 target_h, target_w = c_or_h, h_or_w
                 resized = cv2.resize(frame, (target_w, target_h))
                 rgb = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
-                return np.expand_dims(rgb, axis=0).astype(out_dtype)
+                result = np.expand_dims(rgb, axis=0).astype(out_dtype)
+                if normalize:
+                    result = result / 255.0
+                return result
         resized = cv2.resize(frame, (224, 224))
         rgb = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
         return np.expand_dims(np.transpose(rgb, (2, 0, 1)), axis=0).astype(out_dtype)
@@ -374,7 +381,7 @@ class InferenceHandler:
         max_scores = np.max(class_scores, axis=1)
         class_ids = np.argmax(class_scores, axis=1)
 
-        yolo_threshold = max(self.confidence_threshold, 0.6)
+        yolo_threshold = max(self.confidence_threshold, 0.5)
         mask = max_scores > yolo_threshold
         boxes_xywh = boxes_xywh[mask]
         scores = max_scores[mask]

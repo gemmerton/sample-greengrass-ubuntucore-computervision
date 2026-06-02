@@ -6,6 +6,7 @@
     "output_names": ["output0"],
     "input_shape": [1, 3, 640, 640],
     "input_dtype": "float32",
+    "normalize": true,
     "output_format": "yolov8",
     "labels_file": "labels.txt"
 }
