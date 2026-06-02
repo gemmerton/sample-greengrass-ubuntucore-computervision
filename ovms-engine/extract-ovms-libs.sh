@@ -22,17 +22,16 @@ CONTAINER_NAME="ovms-extract-$$"
 # Determined by cross-referencing `ldd` output with /snap/core24/current/usr/lib/.
 SYSTEM_LIBS=(
     libcurl.so.4
-    libicudata.so.70
-    libicuuc.so.70
-    liblber-2.5.so.0
-    libldap-2.5.so.0
+    libicudata.so.74
+    libicuuc.so.74
+    liblber.so.2
+    libldap.so.2
     libnghttp2.so.14
     libpsl.so.5
-    libpython3.10.so.1.0
+    libpython3.12.so.1.0
     librtmp.so.1
     libsasl2.so.2
     libssh.so.4
-    libunistring.so.2
     libxml2.so.2
 )
 
@@ -86,12 +85,12 @@ for lib in "${SYSTEM_LIBS[@]}"; do
     fi
 done
 
-# Extract Python 3.10 standard library (required by OVMS Python interpreter module)
-echo "Extracting Python 3.10 stdlib..."
+# Extract Python 3.12 standard library (required by OVMS Python interpreter module)
+echo "Extracting Python 3.12 stdlib..."
 docker run --rm --entrypoint tar "${OVMS_IMAGE}" \
-    ch --dereference -C / usr/lib/python3.10 \
+    ch --dereference -C / usr/lib/python3.12 \
     | tar x --strip-components=2 -C ./lib/
-echo "  python3.10/ ($(du -sh ./lib/python3.10 | cut -f1))"
+echo "  python3.12/ ($(du -sh ./lib/python3.12 | cut -f1))"
 
 # Extract OVMS Python dependencies (jinja2, markupsafe, openvino bindings)
 echo "Extracting OVMS Python deps..."
