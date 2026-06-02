@@ -119,6 +119,7 @@ parts:
       "model-faster-rcnn/*": (component/model-faster-rcnn)/
       "model-person-detection/*": (component/model-person-detection)/
       "model-efficientnet/*": (component/model-efficientnet)/
+      "model-yolov8s/*": (component/model-yolov8s)/
 
 apps:
   # CLI exposed as the snap name (ovms-engine)
@@ -202,6 +203,14 @@ components:
     summary: EfficientNet B0 classification model (OpenVINO IR)
     description: |
       EfficientNet B0 image classification model in OpenVINO IR format.
+      Includes manifest.json with model metadata for auto-configuration.
+
+  model-yolov8s:
+    type: standard
+    summary: YOLOv8s object detection model (OpenVINO IR)
+    description: |
+      YOLOv8s (small) 80-class COCO object detection model in OpenVINO IR
+      format. 11M parameters, 640x640 input. Requires NMS postprocessing.
       Includes manifest.json with model metadata for auto-configuration.
 
 hooks:

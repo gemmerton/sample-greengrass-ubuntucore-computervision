@@ -1,0 +1,2 @@
+environment:
+  - MODEL_YOLOV8S_PATH=$COMPONENT

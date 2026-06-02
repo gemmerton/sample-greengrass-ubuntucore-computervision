@@ -317,8 +317,11 @@ class InferenceHandler:
         result_dict = self._normalize_result(result)
 
         # Auto-detect output format:
-        # Format 1: OpenVINO zoo single-tensor [1,1,N,7] (detection_out)
-        # Format 2: TF2 multi-tensor (detection_boxes, detection_scores, detection_classes)
+        # Format 1: YOLOv8 single-tensor [1, 84, 8400] (transposed detection grid)
+        # Format 2: OpenVINO zoo single-tensor [1,1,N,7] (detection_out)
+        # Format 3: TF2 multi-tensor (detection_boxes, detection_scores, detection_classes)
+        if self._is_yolov8_output(result_dict):
+            return self._postprocess_yolov8(result_dict, frame_width, frame_height, inference_time_ms)
         if self._is_tf2_detection_output(result_dict):
             return self._postprocess_tf2_detection(result_dict, frame_width, frame_height, inference_time_ms)
         if "detection_out" in output_names or self._is_ov_detection_output(result_dict):
@@ -343,6 +346,111 @@ class InferenceHandler:
     def _is_tf2_detection_output(result_dict):
         keys = set(result_dict.keys())
         return "detection_boxes" in keys and "detection_scores" in keys and "detection_classes" in keys
+
+    def _is_yolov8_output(self, result_dict):
+        """Detect YOLOv8 output: shape [1, num_classes+4, num_detections] where dim1 < dim2."""
+        for val in result_dict.values():
+            if hasattr(val, 'shape') and len(val.shape) == 3:
+                _, dim1, dim2 = val.shape
+                if dim1 < dim2 and dim1 >= 5:
+                    return True
+        return False
+
+    def _postprocess_yolov8(self, result_dict, frame_width, frame_height, inference_time_ms):
+        """Parse YOLOv8 output: single tensor [1, 4+num_classes, num_detections]."""
+        output = None
+        for val in result_dict.values():
+            if hasattr(val, 'shape') and len(val.shape) == 3:
+                output = val
+                break
+        if output is None:
+            return None
+
+        predictions = np.squeeze(output).T
+
+        boxes_xywh = predictions[:, :4]
+        class_scores = predictions[:, 4:]
+
+        max_scores = np.max(class_scores, axis=1)
+        class_ids = np.argmax(class_scores, axis=1)
+
+        mask = max_scores > self.confidence_threshold
+        boxes_xywh = boxes_xywh[mask]
+        scores = max_scores[mask]
+        class_ids = class_ids[mask]
+
+        if len(scores) == 0:
+            return None
+
+        input_shape = self.model_metadata.get("input_shape", [1, 3, 640, 640])
+        input_h = input_shape[2]
+        input_w = input_shape[3]
+
+        boxes_xyxy = np.zeros_like(boxes_xywh)
+        boxes_xyxy[:, 0] = (boxes_xywh[:, 0] - boxes_xywh[:, 2] / 2) / input_w
+        boxes_xyxy[:, 1] = (boxes_xywh[:, 1] - boxes_xywh[:, 3] / 2) / input_h
+        boxes_xyxy[:, 2] = (boxes_xywh[:, 0] + boxes_xywh[:, 2] / 2) / input_w
+        boxes_xyxy[:, 3] = (boxes_xywh[:, 1] + boxes_xywh[:, 3] / 2) / input_h
+
+        indices = self._nms(boxes_xyxy, scores, iou_threshold=0.5)
+        boxes_xyxy = boxes_xyxy[indices]
+        scores = scores[indices]
+        class_ids = class_ids[indices]
+
+        detections = []
+        for i in range(len(scores)):
+            detections.append({
+                "label": self._get_label(int(class_ids[i])),
+                "score": round(float(scores[i]), 4),
+                "box": {
+                    "xmin": round(float(np.clip(boxes_xyxy[i, 0], 0, 1)), 4),
+                    "ymin": round(float(np.clip(boxes_xyxy[i, 1], 0, 1)), 4),
+                    "xmax": round(float(np.clip(boxes_xyxy[i, 2], 0, 1)), 4),
+                    "ymax": round(float(np.clip(boxes_xyxy[i, 3], 0, 1)), 4),
+                },
+            })
+
+        if not detections:
+            return None
+
+        return {
+            "timestamp": time.time(),
+            "model_id": self.active_model_id,
+            "model_name": self.model_metadata.get("model_name", ""),
+            "result_type": "detection",
+            "results": {"detections": detections, "count": len(detections)},
+            "inference_time_ms": inference_time_ms,
+            "frame_width": frame_width,
+            "frame_height": frame_height,
+            "confidence_threshold": self.confidence_threshold,
+        }
+
+    @staticmethod
+    def _nms(boxes, scores, iou_threshold=0.5):
+        """Non-maximum suppression."""
+        x1 = boxes[:, 0]
+        y1 = boxes[:, 1]
+        x2 = boxes[:, 2]
+        y2 = boxes[:, 3]
+        areas = (x2 - x1) * (y2 - y1)
+        order = scores.argsort()[::-1]
+
+        keep = []
+        while order.size > 0:
+            i = order[0]
+            keep.append(i)
+            xx1 = np.maximum(x1[i], x1[order[1:]])
+            yy1 = np.maximum(y1[i], y1[order[1:]])
+            xx2 = np.minimum(x2[i], x2[order[1:]])
+            yy2 = np.minimum(y2[i], y2[order[1:]])
+            w = np.maximum(0.0, xx2 - xx1)
+            h = np.maximum(0.0, yy2 - yy1)
+            inter = w * h
+            iou = inter / (areas[i] + areas[order[1:]] - inter)
+            inds = np.where(iou <= iou_threshold)[0]
+            order = order[inds + 1]
+
+        return np.array(keep)
 
     def _postprocess_ov_detection(self, result_dict, frame_width, frame_height, inference_time_ms):
         """Parse OpenVINO zoo format: single tensor with shape [1, 1, N, 7].
