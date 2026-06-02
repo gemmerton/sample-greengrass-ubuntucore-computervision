@@ -16,7 +16,11 @@ source "$VENV_DIR/bin/activate"
 # Install dependencies
 echo "Installing optimum-intel..."
 pip install --quiet --upgrade pip
-pip install --quiet "optimum[openvino]"
+# Note: InternVL2-4B's bundled remote code (modeling_phi3.py) relies on
+# transformers APIs removed after 4.49 (e.g. DynamicCache.get_usable_length,
+# and Phi3 inheriting GenerationMixin). Pin transformers to the 4.45-4.49 window
+# that both the remote code and optimum-intel (>=4.45,<4.58) support.
+pip install --quiet "optimum[openvino]" "transformers==4.45.2" einops timm sentencepiece protobuf
 
 rm -rf "$OUTPUT_DIR"
 mkdir -p "$OUTPUT_DIR/meta"
@@ -24,6 +28,7 @@ mkdir -p "$OUTPUT_DIR/meta"
 # Export model to OpenVINO format with INT4 quantization
 optimum-cli export openvino \
     --model OpenGVLab/InternVL2-4B \
+    --trust-remote-code \
     --weight-format int4 \
     "$OUTPUT_DIR/InternVL2-4B-ov-int4"
 

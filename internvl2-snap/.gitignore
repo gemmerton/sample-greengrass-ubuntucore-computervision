@@ -1,0 +1,6 @@
+# Python venv used by convert-model.sh
+venv-convert/
+
+# Generated OpenVINO INT4 model component (built by convert-model.sh,
+# distributed via the s3-snap source, not committed to git)
+components/model-internvl2-4b-ov-int4/
