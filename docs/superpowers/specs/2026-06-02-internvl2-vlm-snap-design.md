@@ -103,6 +103,9 @@ components:
 
 ### Engine Script (`engines/intel-gpu/server`)
 
+Reads configuration via `snapctl get` (the snap-internal equivalent of `snap get`), which
+is how VlmModelManager configures port/host at runtime via the snapd conf API.
+
 ```bash
 #!/bin/bash -eu
 
@@ -127,8 +130,11 @@ export LD_LIBRARY_PATH
 export OCL_ICD_VENDORS=$SNAP/etc/OpenCL/vendors
 export PYTHONPATH="$server_path/lib/python:$server_path/lib/python3.12/site-packages"
 
-port="${INTERNVL2_PORT:-9090}"
-host="${INTERNVL2_HOST:-0.0.0.0}"
+# Read port/host from snap configuration (set by VlmModelManager via snapd API)
+port="$(snapctl get http.port)"
+port="${port:-9090}"
+host="$(snapctl get http.host)"
+host="${host:-0.0.0.0}"
 
 exec "$server_path/bin/ovms" \
     --rest_port "$port" \
@@ -140,6 +146,26 @@ exec "$server_path/bin/ovms" \
     --cache_size 2 \
     "$@"
 ```
+
+### Snap Configuration (managed by VlmModelManager)
+
+The VlmModelManager configures port/host by calling the snapd conf API:
+```
+PUT /v2/snaps/internvl2/conf → {"http.port": 9090, "http.host": "0.0.0.0"}
+```
+
+The engine script reads these via `snapctl get http.port` / `snapctl get http.host`.
+This is the same mechanism qwen-vl uses (via its CLI wrapper around `snapctl`).
+
+The snap also needs default config values in `snapcraft.yaml`:
+```yaml
+hooks:
+  configure:
+    plugs:
+      - network
+```
+
+And a default-configure hook or snap config defaults to set initial values.
 
 ---
 
