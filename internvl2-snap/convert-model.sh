@@ -2,11 +2,21 @@
 set -euo pipefail
 
 OUTPUT_DIR="./components/model-internvl2-4b-ov-int4"
+VENV_DIR="./venv-convert"
 
 echo "=== Converting InternVL2-4B to OpenVINO INT4 ==="
 
-# Install optimum-intel if not present
-pip install --quiet optimum[openvino] 2>/dev/null || pip install --quiet optimum-intel
+# Create and activate venv
+if [ ! -d "$VENV_DIR" ]; then
+    echo "Creating Python venv..."
+    python3 -m venv "$VENV_DIR"
+fi
+source "$VENV_DIR/bin/activate"
+
+# Install dependencies
+echo "Installing optimum-intel..."
+pip install --quiet --upgrade pip
+pip install --quiet "optimum[openvino]"
 
 rm -rf "$OUTPUT_DIR"
 mkdir -p "$OUTPUT_DIR/meta"
@@ -16,6 +26,8 @@ optimum-cli export openvino \
     --model OpenGVLab/InternVL2-4B \
     --weight-format int4 \
     "$OUTPUT_DIR/InternVL2-4B-ov-int4"
+
+deactivate
 
 # Create component metadata
 cat > "$OUTPUT_DIR/meta/component.yaml" << 'EOF'
