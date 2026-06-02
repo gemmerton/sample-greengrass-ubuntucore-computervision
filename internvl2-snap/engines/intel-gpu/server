@@ -1,0 +1,50 @@
+#!/bin/bash -eu
+
+server_path="$SNAP_COMPONENTS/openvino-model-server"
+model_path="$SNAP_COMPONENTS/model-internvl2-4b-ov-int4"
+
+if [ ! -d "$server_path" ]; then
+    echo "Missing component: openvino-model-server"
+    exit 1
+fi
+
+if [ ! -d "$model_path" ]; then
+    echo "Missing component: model-internvl2-4b-ov-int4"
+    exit 1
+fi
+
+# Add OVMS libraries to path
+LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}:$server_path/lib"
+LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$server_path/lib/python"
+LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$server_path/usr/lib/$ARCH_TRIPLET"
+export LD_LIBRARY_PATH
+echo "LD_LIBRARY_PATH: $LD_LIBRARY_PATH"
+
+# OpenCL for Intel GPU
+export OCL_ICD_VENDORS=$SNAP/etc/OpenCL/vendors
+
+# Python dependencies for OVMS
+export PYTHONPATH="$server_path/lib/python:$server_path/lib/python3.12/site-packages"
+echo "PYTHONPATH: $PYTHONPATH"
+
+# Read port/host from snap configuration (set by VlmModelManager via snapd API)
+port="$(snapctl get http.port)"
+port="${port:-9090}"
+host="$(snapctl get http.host)"
+host="${host:-0.0.0.0}"
+
+# Run model init script if present
+if [ -f "$model_path/init" ]; then
+    "$model_path/init"
+fi
+
+set -x
+exec "$server_path/bin/ovms" \
+    --rest_port "$port" \
+    --rest_bind_address "$host" \
+    --source_model "InternVL2-4B-ov-int4" \
+    --model_repository_path "$model_path" \
+    --target_device GPU \
+    --task text_generation \
+    --cache_size 2 \
+    "$@"

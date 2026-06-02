@@ -1,0 +1,71 @@
+name: internvl2
+version: '1.0.0'
+summary: InternVL2-4B Vision Language Model (OpenVINO)
+description: |
+  Self-packaged VLM snap serving InternVL2-4B via OpenVINO Model Server.
+  Intel GPU accelerated inference with OpenAI-compatible chat API.
+
+base: core24
+confinement: strict
+grade: stable
+
+platforms:
+  amd64:
+
+environment:
+  SNAP_COMPONENTS: /snap/$SNAP_INSTANCE_NAME/components/$SNAP_REVISION
+  ARCH_TRIPLET: x86_64-linux-gnu
+  LD_LIBRARY_PATH: ${SNAP_LIBRARY_PATH}${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}:$SNAP/lib:$SNAP/usr/lib:$SNAP/usr/lib/x86_64-linux-gnu
+  PATH: $SNAP/usr/sbin:$SNAP/usr/bin:$SNAP/sbin:$SNAP/bin:$PATH
+
+parts:
+  scripts:
+    source: .
+    plugin: dump
+    organize:
+      engines/**: engines/
+      bin/**: bin/
+    stage:
+      - engines/**
+      - bin/**
+
+  opencl-icd:
+    plugin: nil
+    stage-packages:
+      - intel-opencl-icd
+    organize:
+      etc/OpenCL/vendors/intel.icd: etc/OpenCL/vendors/intel.icd
+
+apps:
+  server:
+    command: bin/server.sh
+    daemon: simple
+    plugs:
+      - network-bind
+      - network
+      - hardware-observe
+      - opengl
+    environment:
+      ARCH_TRIPLET: x86_64-linux-gnu
+      OCL_ICD_VENDORS: $SNAP/etc/OpenCL/vendors
+
+hooks:
+  configure:
+    plugs:
+      - network
+
+layout:
+  /etc/OpenCL/vendors:
+    bind: $SNAP/etc/OpenCL/vendors
+  /usr/lib/x86_64-linux-gnu/intel-opencl:
+    bind: $SNAP/usr/lib/x86_64-linux-gnu/intel-opencl
+
+components:
+  openvino-model-server:
+    type: standard
+    summary: OpenVINO Model Server
+    description: OVMS binary and libraries for VLM text generation serving
+  model-internvl2-4b-ov-int4:
+    type: standard
+    summary: InternVL2-4B OpenVINO INT4
+    description: InternVL2-4B vision-language model in OpenVINO IR format, INT4 quantized
