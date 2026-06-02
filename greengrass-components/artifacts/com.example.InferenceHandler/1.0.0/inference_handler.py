@@ -374,7 +374,8 @@ class InferenceHandler:
         max_scores = np.max(class_scores, axis=1)
         class_ids = np.argmax(class_scores, axis=1)
 
-        mask = max_scores > self.confidence_threshold
+        yolo_threshold = max(self.confidence_threshold, 0.6)
+        mask = max_scores > yolo_threshold
         boxes_xywh = boxes_xywh[mask]
         scores = max_scores[mask]
         class_ids = class_ids[mask]
