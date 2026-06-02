@@ -1,0 +1,4 @@
+component: internvl2+openvino-model-server
+type: standard
+summary: OpenVINO Model Server
+description: OVMS binary and libraries for VLM text generation serving
