@@ -14,7 +14,7 @@ set -euo pipefail
 # NOT exist in the core24 base snap. This list must be re-validated if the
 # OVMS_VERSION is changed.
 
-OVMS_VERSION="2024.5"
+OVMS_VERSION="2025.0"
 OVMS_IMAGE="openvino/model_server:${OVMS_VERSION}"
 CONTAINER_NAME="ovms-extract-$$"
 
