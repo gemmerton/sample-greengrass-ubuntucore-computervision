@@ -382,9 +382,8 @@ class GreengrassDeployer:
                     'models': {
                         'gemma3': {'channel': 'stable'},
                         'qwen-vl': {'channel': 'beta'},
-                        'gemma4': {'channel': 'stable'},
                     },
-                    'active_model': 'gemma3',
+                    'active_model': 'qwen-vl',
                     'vlm_config': {
                         'system_prompt': 'You are a workplace safety analyst. Analyse the image and return a JSON object with: risk_level (HIGH/MEDIUM/LOW/NONE), summary (one sentence), and risks (array of {description, severity, category}). Only return the JSON object, no other text.',
                         'user_prompt': 'Assess workplace safety risks visible in this scene.',
