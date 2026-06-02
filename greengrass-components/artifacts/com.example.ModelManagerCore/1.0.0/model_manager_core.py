@@ -497,6 +497,7 @@ class ModelManagerCore:
             "output_names": manifest.get("output_names"),
             "input_shape": manifest.get("input_shape"),
             "input_dtype": manifest.get("input_dtype"),
+            "normalize": manifest.get("normalize", False),
             "labels_file": labels_path,
             "local_path": model_path,
             "default_system_prompt": manifest.get("default_system_prompt"),
