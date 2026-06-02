@@ -380,8 +380,16 @@ class GreengrassDeployer:
             'vlm-config': {
                 'state': {'desired': {
                     'models': {
-                        'gemma3': {'channel': 'stable'},
-                        'qwen-vl': {'channel': 'beta'},
+                        'gemma3': {'source': 'snap', 'channel': 'stable'},
+                        'qwen-vl': {'source': 'snap', 'channel': 'beta'},
+                        'internvl2': {
+                            'source': 's3-snap',
+                            's3_uri': 's3://gg-ge-test/vlm-snaps/internvl2.snap',
+                            'components_s3': {
+                                'openvino-model-server': 's3://gg-ge-test/vlm-snaps/internvl2+openvino-model-server.comp',
+                                'model-internvl2-4b-ov-int4': 's3://gg-ge-test/vlm-snaps/internvl2+model-internvl2-4b-ov-int4.comp',
+                            },
+                        },
                     },
                     'active_model': 'qwen-vl',
                     'vlm_config': {
