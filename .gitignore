@@ -1,6 +1,8 @@
 # Snap packages and build artifacts
 *.snap
 *.comp
+*.bin
+*.pt
 stage/
 prime/
 .snapcraft/
