@@ -168,7 +168,11 @@ class VlmModelManager:
             logger.info("Models to install: %s", list(to_install.keys()))
 
         for model_id, config in to_install.items():
-            self._install_vlm_snap(model_id, config)
+            source = config.get("source", "snap")
+            if source == "s3-snap":
+                self._install_s3_snap(model_id, config)
+            else:
+                self._install_vlm_snap(model_id, config)
 
     def _configure_vlm_port(self, model_id):
         """Configure a VLM snap to use the standard VLM port via its CLI."""
@@ -253,6 +257,84 @@ class VlmModelManager:
                 )
 
         self._report_model_status(model_id, "ready", channel=channel)
+
+    def _download_from_s3(self, s3_uri, model_id, suffix):
+        """Download a file from S3 to a temporary local path."""
+        import boto3
+        from urllib.parse import urlparse
+
+        parsed = urlparse(s3_uri)
+        bucket = parsed.netloc
+        key = parsed.path.lstrip("/")
+        local_path = f"/tmp/{model_id}{suffix}"
+
+        logger.info("Downloading s3://%s/%s -> %s", bucket, key, local_path)
+        s3_client = boto3.client("s3")
+        s3_client.download_file(bucket, key, local_path)
+        return local_path
+
+    def _install_s3_snap(self, model_id, config):
+        """Install a VLM snap and its components from S3.
+
+        Downloads the .snap file and .comp files from S3, sideloads them via
+        the snapd API. After installation the snap behaves identically to a
+        store-installed snap.
+        """
+        snap_s3_uri = config.get("s3_uri")
+        components_s3 = config.get("components_s3", {})
+
+        if not snap_s3_uri:
+            logger.error("s3-snap model '%s' missing 's3_uri' field", model_id)
+            self._report_model_status(model_id, "failed", reason="Missing s3_uri")
+            return
+
+        if self.snapd.is_installed(model_id):
+            logger.info("Snap '%s' already installed", model_id)
+            self._configure_vlm_port(model_id)
+            self._report_model_status(model_id, "ready")
+            if model_id != self.active_model:
+                try:
+                    self.snapd.stop_snap_service(model_id)
+                except Exception:
+                    pass
+            return
+
+        self._report_model_status(model_id, "installing")
+
+        # Download and sideload the parent snap
+        try:
+            local_snap = self._download_from_s3(snap_s3_uri, model_id, ".snap")
+            self.snapd.sideload_component(local_snap, timeout=300)
+            os.remove(local_snap)
+            logger.info("Sideloaded snap '%s' from S3", model_id)
+        except Exception as e:
+            logger.error("Failed to sideload snap '%s': %s", model_id, e)
+            self._report_model_status(model_id, "failed", reason=f"Snap sideload failed: {e}")
+            return
+
+        # Download and sideload each component
+        for comp_name, comp_s3_uri in components_s3.items():
+            try:
+                local_comp = self._download_from_s3(comp_s3_uri, model_id, f"+{comp_name}.comp")
+                self.snapd.sideload_component(local_comp, timeout=900)
+                os.remove(local_comp)
+                logger.info("Sideloaded component '%s+%s' from S3", model_id, comp_name)
+            except Exception as e:
+                logger.error("Failed to sideload component '%s+%s': %s", model_id, comp_name, e)
+                self._report_model_status(model_id, "failed", reason=f"Component sideload failed: {e}")
+                return
+
+        # Configure and report ready
+        self._configure_vlm_port(model_id)
+        self._report_model_status(model_id, "ready")
+
+        if model_id != self.active_model:
+            try:
+                self.snapd.stop_snap_service(model_id)
+            except Exception:
+                pass
+
+        logger.info("S3-snap model '%s' installed successfully", model_id)
 
     def _handle_active_model_switch(self, new_model_id):
         if not new_model_id:
