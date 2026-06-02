@@ -37,7 +37,7 @@ class VlmHandler:
             "SNAPSHOT_DIR",
             "/var/snap/aws-iot-greengrass/common/greengrass/v2/work/com.example.KvsProducer/snapshots"
         )
-        self.vlm_endpoint = os.environ.get("VLM_ENDPOINT", "http://localhost:9090/v1/chat/completions")
+        self.vlm_endpoint = os.environ.get("VLM_ENDPOINT", "http://localhost:9090/v3/chat/completions")
         self.ipc_client = clientv2.GreengrassCoreIPCClientV2()
         self.shadow_client = CloudShadowClient(self.thing_name, SHADOW_NAME)
 
@@ -98,7 +98,7 @@ class VlmHandler:
     def _endpoint_healthy(self):
         try:
             base_url = self._get_base_url()
-            resp = requests.get(f"{base_url}/health", timeout=3)
+            resp = requests.get(f"{base_url}/v2/health/live", timeout=3)
             if resp.status_code == 200:
                 self._discover_model_name()
                 return True
@@ -107,10 +107,10 @@ class VlmHandler:
             return False
 
     def _discover_model_name(self):
-        """Query the /v1/models endpoint to get the actual pipeline model name."""
+        """Query the /v3/models endpoint to get the actual pipeline model name."""
         try:
             base_url = self._get_base_url()
-            resp = requests.get(f"{base_url}/v1/models", timeout=3)
+            resp = requests.get(f"{base_url}/v3/models", timeout=3)
             if resp.status_code == 200:
                 data = resp.json()
                 models = data.get("data", [])
