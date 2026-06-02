@@ -397,6 +397,13 @@ class InferenceHandler:
         scores = scores[indices]
         class_ids = class_ids[indices]
 
+        max_det = 50
+        if len(scores) > max_det:
+            top_indices = np.argsort(scores)[::-1][:max_det]
+            boxes_xyxy = boxes_xyxy[top_indices]
+            scores = scores[top_indices]
+            class_ids = class_ids[top_indices]
+
         detections = []
         for i in range(len(scores)):
             detections.append({
