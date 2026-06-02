@@ -590,17 +590,17 @@ class InferenceHandler:
     def _publish(self, payload):
         try:
             encoded = json.dumps(payload).encode("utf-8")
+            logger.info("Publishing %d bytes to %s (%s: %s results, %sms)",
+                       len(encoded), self.pub_topic, payload.get("result_type"),
+                       payload.get("results", {}).get("count", len(payload.get("results", {}).get("classifications", []))),
+                       payload.get("inference_time_ms"))
             self.ipc_client.publish_to_iot_core(
                 topic_name=self.pub_topic,
                 qos="1",
                 payload=encoded,
             )
-            logger.info("Published to %s (%s: %s results, %sms)",
-                       self.pub_topic, payload.get("result_type"),
-                       payload.get("results", {}).get("count", len(payload.get("results", {}).get("classifications", []))),
-                       payload.get("inference_time_ms"))
         except Exception as e:
-            logger.error("Failed to publish inference results: %s", e)
+            logger.error("Failed to publish inference results: %s: %s", type(e).__name__, e)
 
 
 if __name__ == "__main__":
