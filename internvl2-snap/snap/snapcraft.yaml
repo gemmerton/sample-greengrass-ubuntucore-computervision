@@ -29,6 +29,14 @@ parts:
       - engines/**
       - bin/**
 
+  component-files:
+    source: components
+    source-type: local
+    plugin: dump
+    organize:
+      "openvino-model-server/*": (component/openvino-model-server)/
+      "model-internvl2-4b-ov-int4/*": (component/model-internvl2-4b-ov-int4)/
+
   opencl-icd:
     plugin: nil
     stage-packages:
