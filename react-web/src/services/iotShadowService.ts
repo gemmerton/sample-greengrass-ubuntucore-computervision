@@ -92,6 +92,8 @@ export function parseVlmConfigShadow(payload: any): VlmConfigShadowState {
         trigger_classes: Array.isArray(rawVlmConfig.trigger_classes) ? rawVlmConfig.trigger_classes : ['person'],
         trigger_cooldown: rawVlmConfig.trigger_cooldown ?? 10,
         alert_rules: Array.isArray(rawVlmConfig.alert_rules) ? rawVlmConfig.alert_rules : [],
+        sms_enabled: rawVlmConfig.sms_enabled ?? false,
+        sms_cooldown_seconds: rawVlmConfig.sms_cooldown_seconds ?? 300,
       }
     : null;
 

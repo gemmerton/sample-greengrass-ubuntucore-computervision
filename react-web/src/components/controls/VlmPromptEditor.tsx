@@ -33,6 +33,8 @@ export const VlmPromptEditor: React.FC<VlmPromptEditorProps> = ({ thingName }) =
   const [triggerClasses, setTriggerClasses] = useState<string[]>(['person']);
   const [triggerCooldown, setTriggerCooldown] = useState(10);
   const [alertRules, setAlertRules] = useState<string[]>([]);
+  const [smsEnabled, setSmsEnabled] = useState(false);
+  const [smsCooldownSeconds, setSmsCooldownSeconds] = useState(300);
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [loaded, setLoaded] = useState(false);
 
@@ -52,6 +54,8 @@ export const VlmPromptEditor: React.FC<VlmPromptEditorProps> = ({ thingName }) =
         setTriggerClasses(config.trigger_classes);
         setTriggerCooldown(config.trigger_cooldown);
         setAlertRules(config.alert_rules);
+        setSmsEnabled(config.sms_enabled ?? false);
+        setSmsCooldownSeconds(config.sms_cooldown_seconds ?? 300);
       }
       setLoaded(true);
     };
@@ -73,6 +77,8 @@ export const VlmPromptEditor: React.FC<VlmPromptEditorProps> = ({ thingName }) =
         trigger_classes: triggerClasses,
         trigger_cooldown: triggerCooldown,
         alert_rules: alertRules,
+        sms_enabled: smsEnabled,
+        sms_cooldown_seconds: smsCooldownSeconds,
       };
       await iotShadowService.setVlmConfig(thingName, credentials, region, config);
       setSaveState('saved');
@@ -240,6 +246,33 @@ export const VlmPromptEditor: React.FC<VlmPromptEditorProps> = ({ thingName }) =
             >
               + Add Rule
             </button>
+          )}
+        </div>
+        <div className="vlm-prompt-editor__sms-config">
+          <div className="vlm-prompt-editor__sms-toggle">
+            <label className="vlm-prompt-editor__label">SMS Notifications</label>
+            <button
+              type="button"
+              className={`vlm-prompt-editor__toggle-btn ${smsEnabled ? 'vlm-prompt-editor__toggle-btn--active' : ''}`}
+              onClick={() => setSmsEnabled(!smsEnabled)}
+              aria-pressed={smsEnabled}
+            >
+              {smsEnabled ? 'Enabled' : 'Disabled'}
+            </button>
+          </div>
+          {smsEnabled && (
+            <div className="vlm-prompt-editor__field">
+              <label className="vlm-prompt-editor__label">SMS Cooldown (seconds)</label>
+              <input
+                type="number"
+                className="vlm-prompt-editor__input"
+                value={smsCooldownSeconds}
+                onChange={(e) => setSmsCooldownSeconds(Math.max(60, parseInt(e.target.value) || 300))}
+                min={60}
+                max={3600}
+              />
+              <span className="vlm-prompt-editor__hint">Minimum time between SMS for the same rule</span>
+            </div>
           )}
         </div>
       </section>
