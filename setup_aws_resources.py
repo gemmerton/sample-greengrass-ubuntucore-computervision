@@ -546,6 +546,134 @@ class AWSResourcesSetup:
         print(f"Public access blocked on: {bucket_name}")
         return bucket_name
 
+    def find_or_create_oac(self, oac_name):
+        """Find existing OAC by name or create a new one."""
+        try:
+            response = self.cloudfront.list_origin_access_controls()
+            for item in response.get('OriginAccessControlList', {}).get('Items', []):
+                if item['Name'] == oac_name:
+                    oac_id = item['Id']
+                    print(f"Using existing OAC: {oac_id}")
+                    return oac_id
+        except ClientError:
+            pass
+
+        response = self.cloudfront.create_origin_access_control(
+            OriginAccessControlConfig={
+                'Name': oac_name,
+                'Description': f'OAC for {self.project_name} dashboard',
+                'SigningProtocol': 'sigv4',
+                'SigningBehavior': 'always',
+                'OriginAccessControlOriginType': 's3',
+            }
+        )
+        oac_id = response['OriginAccessControl']['Id']
+        print(f"Created OAC: {oac_id}")
+        return oac_id
+
+    def find_distribution_by_tag(self):
+        """Find an existing CloudFront distribution tagged with this project."""
+        try:
+            paginator = self.cloudfront.get_paginator('list_distributions')
+            for page in paginator.paginate():
+                dist_list = page.get('DistributionList', {})
+                for dist in dist_list.get('Items', []):
+                    dist_id = dist['Id']
+                    try:
+                        tags_resp = self.cloudfront.list_tags_for_resource(
+                            Resource=dist['ARN']
+                        )
+                        for tag in tags_resp['Tags'].get('Items', []):
+                            if tag['Key'] == 'project' and tag['Value'] == self.project_name:
+                                print(f"Found existing distribution: {dist_id}")
+                                return dist_id, dist['ARN'], dist['DomainName']
+                    except ClientError:
+                        continue
+        except ClientError:
+            pass
+        return None, None, None
+
+    def create_or_update_distribution(self, bucket_name, oac_id):
+        """Create CloudFront distribution or return existing one."""
+        existing_id, existing_arn, existing_domain = self.find_distribution_by_tag()
+        if existing_id:
+            print(f"Distribution already exists: https://{existing_domain}")
+            return existing_id, existing_arn, existing_domain
+
+        origin_domain = f'{bucket_name}.s3.{self.aws_region}.amazonaws.com'
+        caller_reference = f'{self.project_name}-dashboard-{self.account_id}'
+
+        response = self.cloudfront.create_distribution_with_tags(
+            DistributionConfigWithTags={
+                'DistributionConfig': {
+                    'CallerReference': caller_reference,
+                    'Comment': f'{self.project_name} dashboard',
+                    'Enabled': True,
+                    'DefaultRootObject': 'index.html',
+                    'HttpVersion': 'http2',
+                    'PriceClass': 'PriceClass_100',
+                    'Origins': {
+                        'Quantity': 1,
+                        'Items': [{
+                            'Id': f'{bucket_name}-origin',
+                            'DomainName': origin_domain,
+                            'OriginAccessControlId': oac_id,
+                            'S3OriginConfig': {
+                                'OriginAccessIdentity': '',
+                            },
+                        }],
+                    },
+                    'DefaultCacheBehavior': {
+                        'TargetOriginId': f'{bucket_name}-origin',
+                        'ViewerProtocolPolicy': 'redirect-to-https',
+                        'AllowedMethods': {
+                            'Quantity': 2,
+                            'Items': ['GET', 'HEAD'],
+                            'CachedMethods': {
+                                'Quantity': 2,
+                                'Items': ['GET', 'HEAD'],
+                            },
+                        },
+                        'CachePolicyId': '658327ea-f89d-4fab-a63d-7e88639e58f6',
+                        'Compress': True,
+                    },
+                    'CustomErrorResponses': {
+                        'Quantity': 2,
+                        'Items': [
+                            {
+                                'ErrorCode': 403,
+                                'ResponsePagePath': '/index.html',
+                                'ResponseCode': '200',
+                                'ErrorCachingMinTTL': 10,
+                            },
+                            {
+                                'ErrorCode': 404,
+                                'ResponsePagePath': '/index.html',
+                                'ResponseCode': '200',
+                                'ErrorCachingMinTTL': 10,
+                            },
+                        ],
+                    },
+                    'ViewerCertificate': {
+                        'CloudFrontDefaultCertificate': True,
+                    },
+                },
+                'Tags': {
+                    'Items': [
+                        {'Key': 'project', 'Value': self.project_name},
+                    ],
+                },
+            }
+        )
+        dist = response['Distribution']
+        dist_id = dist['Id']
+        dist_arn = dist['ARN']
+        dist_domain = dist['DomainName']
+        print(f"Created CloudFront distribution: {dist_id}")
+        print(f"  URL: https://{dist_domain}")
+        print(f"  Note: May take 5-10 minutes to fully deploy")
+        return dist_id, dist_arn, dist_domain
+
     def validate_password(self, password):
         """Validate password against Cognito User Pool password policy."""
         if len(password) < 8:
