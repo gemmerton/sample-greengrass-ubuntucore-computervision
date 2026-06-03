@@ -11,11 +11,12 @@
 
 .vlm-prompt-editor__label {
   display: block;
-  font-size: 0.75rem;
-  color: var(--text-muted, #888);
+  font-size: 0.95rem;
+  color: #e0e0e0;
+  font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  margin-bottom: 4px;
+  margin-bottom: 6px;
 }
 
 .vlm-prompt-editor__select,
@@ -23,11 +24,11 @@
 .vlm-prompt-editor__input {
   width: 100%;
   background: var(--bg-subtle, #2a2a3e);
-  border: 1px solid var(--border, #333);
+  border: 1px solid var(--border, #444);
   border-radius: 4px;
-  color: var(--text-primary, #eee);
-  padding: 8px;
-  font-size: 0.85rem;
+  color: #ffffff;
+  padding: 10px;
+  font-size: 1rem;
   font-family: inherit;
 }
 
@@ -50,12 +51,13 @@
 }
 
 .vlm-prompt-editor__apply {
-  padding: 8px 16px;
+  padding: 10px 18px;
   background: var(--accent, #3b82f6);
   color: #fff;
   border: none;
   border-radius: 4px;
-  font-size: 0.85rem;
+  font-size: 1rem;
+  font-weight: 600;
   cursor: pointer;
   transition: background 0.15s;
 }
@@ -79,11 +81,12 @@
 
 .vlm-prompt-editor__mode-btn {
   flex: 1;
-  padding: 6px 12px;
+  padding: 8px 14px;
   background: var(--bg-subtle, #2a2a3e);
-  color: var(--text-muted, #888);
+  color: var(--color-text-secondary, #b0bec5);
   border: none;
-  font-size: 0.8rem;
+  font-size: 0.95rem;
+  font-weight: 500;
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
 }
@@ -108,9 +111,9 @@
 }
 
 .vlm-prompt-editor__hint {
-  font-size: 0.7rem;
-  color: var(--text-muted, #666);
-  margin-top: 2px;
+  font-size: 0.8rem;
+  color: var(--color-text-tertiary, #78909c);
+  margin-top: 4px;
 }
 
 .vlm-prompt-editor__alert-rules {
