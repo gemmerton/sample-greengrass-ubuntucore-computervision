@@ -13,6 +13,20 @@ const TEXT_BG = 'rgba(0, 0, 0, 0.7)';
 const FONT = '14px monospace';
 const STALE_TIMEOUT_MS = 5000;
 
+const SKELETON_COLOR = '#00ccff';
+const KEYPOINT_COLOR = '#ff3366';
+const KEYPOINT_RADIUS = 4;
+const SKELETON_LINE_WIDTH = 2;
+const KEYPOINT_CONFIDENCE_THRESHOLD = 0.3;
+
+// COCO skeleton connections (0-indexed keypoint pairs)
+const SKELETON_CONNECTIONS: [number, number][] = [
+  [15, 13], [13, 11], [16, 14], [14, 12], [11, 12],
+  [5, 11], [6, 12], [5, 6], [5, 7], [6, 8],
+  [7, 9], [8, 10], [1, 2], [0, 1], [0, 2],
+  [1, 3], [2, 4], [3, 5], [4, 6],
+];
+
 export const InferenceOverlay: React.FC<InferenceOverlayProps> = ({
   result,
   videoElement,
@@ -44,6 +58,9 @@ export const InferenceOverlay: React.FC<InferenceOverlayProps> = ({
     if (result.result_type === 'detection') {
       const detections = (result.results as { detections: Detection[] }).detections ?? [];
       drawDetections(ctx, detections, canvas.width, canvas.height);
+    } else if (result.result_type === 'pose') {
+      const detections = (result.results as { detections: Detection[] }).detections ?? [];
+      drawPoseDetections(ctx, detections, canvas.width, canvas.height);
     } else if (result.result_type === 'classification') {
       const classifications = (result.results as { classifications: { label: string; confidence: number }[] }).classifications;
       if (classifications.length > 0) {
@@ -160,4 +177,72 @@ function drawClassificationBadge(
 
   ctx.fillStyle = '#00ff88';
   ctx.fillText(label, x + padding, y + 22);
+}
+
+function drawPoseDetections(
+  ctx: CanvasRenderingContext2D,
+  detections: Detection[],
+  canvasWidth: number,
+  canvasHeight: number
+) {
+  for (const det of detections) {
+    // Draw bounding box (dashed for pose to differentiate from detection)
+    const x = det.box.xmin * canvasWidth;
+    const y = det.box.ymin * canvasHeight;
+    const w = (det.box.xmax - det.box.xmin) * canvasWidth;
+    const h = (det.box.ymax - det.box.ymin) * canvasHeight;
+
+    ctx.strokeStyle = BOX_COLOR;
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]);
+    ctx.strokeRect(x, y, w, h);
+    ctx.setLineDash([]);
+
+    // Draw label
+    const label = `${det.label} ${(det.score * 100).toFixed(0)}%`;
+    ctx.font = FONT;
+    const textWidth = ctx.measureText(label).width;
+    ctx.fillStyle = TEXT_BG;
+    ctx.fillRect(x, y - 20, textWidth + 8, 20);
+    ctx.fillStyle = TEXT_COLOR;
+    ctx.fillText(label, x + 4, y - 5);
+
+    // Draw skeleton
+    if (!det.keypoints || det.keypoints.length < 17) continue;
+
+    // Draw connections (lines between keypoints)
+    ctx.strokeStyle = SKELETON_COLOR;
+    ctx.lineWidth = SKELETON_LINE_WIDTH;
+    for (const [i, j] of SKELETON_CONNECTIONS) {
+      const kpA = det.keypoints[i];
+      const kpB = det.keypoints[j];
+      if (kpA.confidence < KEYPOINT_CONFIDENCE_THRESHOLD) continue;
+      if (kpB.confidence < KEYPOINT_CONFIDENCE_THRESHOLD) continue;
+
+      const ax = kpA.x * canvasWidth;
+      const ay = kpA.y * canvasHeight;
+      const bx = kpB.x * canvasWidth;
+      const by = kpB.y * canvasHeight;
+
+      ctx.beginPath();
+      ctx.moveTo(ax, ay);
+      ctx.lineTo(bx, by);
+      ctx.stroke();
+    }
+
+    // Draw keypoint circles
+    for (const kp of det.keypoints) {
+      if (kp.confidence < KEYPOINT_CONFIDENCE_THRESHOLD) continue;
+      const kx = kp.x * canvasWidth;
+      const ky = kp.y * canvasHeight;
+
+      ctx.beginPath();
+      ctx.arc(kx, ky, KEYPOINT_RADIUS, 0, 2 * Math.PI);
+      ctx.fillStyle = KEYPOINT_COLOR;
+      ctx.fill();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+  }
 }
