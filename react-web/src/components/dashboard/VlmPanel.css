@@ -34,23 +34,23 @@
 }
 
 .vlm-panel__risk-badge {
-  padding: 4px 12px;
+  padding: 5px 14px;
   border-radius: 4px;
   font-weight: 700;
-  font-size: 0.85rem;
+  font-size: 1rem;
   color: #fff;
   letter-spacing: 0.5px;
 }
 
 .vlm-panel__staleness {
-  font-size: 0.75rem;
+  font-size: 0.85rem;
   color: var(--text-muted, #888);
 }
 
 .vlm-panel__summary {
-  font-size: 0.95rem;
+  font-size: 1.1rem;
   color: var(--text-primary, #eee);
-  line-height: 1.4;
+  line-height: 1.5;
   margin: 0;
 }
 
@@ -58,7 +58,7 @@
   background: none;
   border: none;
   color: var(--text-secondary, #aaa);
-  font-size: 0.8rem;
+  font-size: 0.95rem;
   cursor: pointer;
   padding: 0;
 }
@@ -76,8 +76,8 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
-  font-size: 0.85rem;
-  padding: 8px;
+  font-size: 1rem;
+  padding: 10px;
   border: 1px solid var(--border, #333);
   border-radius: 4px;
 }
@@ -94,24 +94,24 @@
 
 .vlm-panel__risk-severity {
   font-weight: 600;
-  font-size: 0.7rem;
-  padding: 2px 8px;
+  font-size: 0.85rem;
+  padding: 3px 10px;
   border-radius: 3px;
   color: #fff;
 }
 
 .vlm-panel__risk-category {
-  font-size: 0.7rem;
+  font-size: 0.85rem;
   color: var(--text-muted, #888);
   background: var(--bg-subtle, #2a2a3e);
-  padding: 2px 6px;
+  padding: 3px 8px;
   border-radius: 3px;
 }
 
 .vlm-panel__risk-desc {
   color: var(--text-primary, #eee);
-  font-size: 0.82rem;
-  line-height: 1.4;
+  font-size: 1rem;
+  line-height: 1.5;
   border-top: 1px solid var(--border, #333);
   padding-top: 6px;
 }
@@ -139,7 +139,7 @@
 .vlm-panel__footer {
   display: flex;
   justify-content: space-between;
-  font-size: 0.75rem;
+  font-size: 0.85rem;
   color: var(--text-muted, #888);
   border-top: 1px solid var(--border, #333);
   padding-top: 8px;
