@@ -1,10 +1,13 @@
 #!/bin/bash
 set -euo pipefail
 
-OUTPUT_DIR="./yolo26s-pose_openvino_model"
+# Uses YOLOv8s-pose (same tensor format as YOLO26-pose: [1, 56, 8400])
+# Swap to yolo26s-pose.pt once ultralytics>=26.0.0 ships on PyPI.
+MODEL_NAME="yolov8s-pose"
+OUTPUT_DIR="./${MODEL_NAME}_openvino_model"
 VENV_DIR="./venv-yolo26-export"
 
-echo "=== Exporting YOLO26s-pose to OpenVINO IR ==="
+echo "=== Exporting ${MODEL_NAME} to OpenVINO IR ==="
 
 # Create and activate venv
 if [ ! -d "$VENV_DIR" ]; then
@@ -16,13 +19,13 @@ source "$VENV_DIR/bin/activate"
 # Install dependencies
 echo "Installing ultralytics..."
 pip install --quiet --upgrade pip
-pip install --quiet "ultralytics>=26.0.0" "openvino>=2025.0,<2026.0"
+pip install --quiet "ultralytics>=8.4.0" "openvino>=2025.0,<2026.0"
 
 # Export model
 python3 -c "
 from ultralytics import YOLO
 
-model = YOLO('yolo26s-pose.pt')
+model = YOLO('${MODEL_NAME}.pt')
 model.export(
     format='openvino',
     imgsz=640,
@@ -40,5 +43,5 @@ echo "Model directory: $OUTPUT_DIR"
 echo "Model size: $(du -sh "$OUTPUT_DIR" | cut -f1)"
 echo ""
 echo "Next steps:"
-echo "  1. Verify the model loads: python3 -c \"import openvino as ov; m = ov.Core().read_model('$OUTPUT_DIR/yolo26s-pose.xml'); print([o.shape for o in m.outputs])\""
+echo "  1. Verify the model loads: python3 -c \"import openvino as ov; m = ov.Core().read_model('$OUTPUT_DIR/${MODEL_NAME}.xml'); print([o.shape for o in m.outputs])\""
 echo "  2. Copy model files to ovms-engine/components/model-yolo26pose/1/"
