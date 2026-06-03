@@ -1,0 +1,2 @@
+environment:
+  - MODEL_YOLO26POSE_PATH=$COMPONENT

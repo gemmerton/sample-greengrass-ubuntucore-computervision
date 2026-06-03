@@ -120,6 +120,7 @@ parts:
       "model-person-detection/*": (component/model-person-detection)/
       "model-efficientnet/*": (component/model-efficientnet)/
       "model-yolov8s/*": (component/model-yolov8s)/
+      "model-yolo26pose/*": (component/model-yolo26pose)/
 
 apps:
   # CLI exposed as the snap name (ovms-engine)
@@ -211,6 +212,16 @@ components:
     description: |
       YOLOv8s (small) 80-class COCO object detection model in OpenVINO IR
       format. 11M parameters, 640x640 input. Requires NMS postprocessing.
+      Includes manifest.json with model metadata for auto-configuration.
+
+  model-yolo26pose:
+    type: standard
+    summary: YOLO26s pose estimation model (OpenVINO IR)
+    description: |
+      YOLO26s-pose 17-keypoint COCO pose estimation model in OpenVINO IR
+      format. 9.5M parameters, 640x640 input. Detects people and outputs
+      skeleton keypoints for wireframe visualisation. Requires NMS
+      postprocessing (end2end=false export).
       Includes manifest.json with model metadata for auto-configuration.
 
 hooks:
