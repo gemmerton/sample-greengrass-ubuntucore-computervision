@@ -324,9 +324,12 @@ class InferenceHandler:
         result_dict = self._normalize_result(result)
 
         # Auto-detect output format:
+        # Format 0: YOLO pose (check FIRST — shape overlaps with YOLOv8 detection)
         # Format 1: YOLOv8 single-tensor [1, 84, 8400] (transposed detection grid)
         # Format 2: OpenVINO zoo single-tensor [1,1,N,7] (detection_out)
         # Format 3: TF2 multi-tensor (detection_boxes, detection_scores, detection_classes)
+        if self._is_yolo_pose_output(result_dict):
+            return self._postprocess_yolo_pose(result_dict, frame_width, frame_height, inference_time_ms)
         if self._is_yolov8_output(result_dict):
             return self._postprocess_yolov8(result_dict, frame_width, frame_height, inference_time_ms)
         if self._is_tf2_detection_output(result_dict):
@@ -361,6 +364,22 @@ class InferenceHandler:
                 _, dim1, dim2 = val.shape
                 if dim1 < dim2 and dim1 >= 5:
                     return True
+        return False
+
+    def _is_yolo_pose_output(self, result_dict):
+        """Detect YOLO pose output: output_format is 'yolo26-pose' in metadata,
+        or shape [1, 56, N] where 56 = 4 + 1 + 17*3."""
+        output_format = self.model_metadata.get("output_format", "")
+        if output_format == "yolo26-pose":
+            return True
+        num_kp = self.model_metadata.get("num_keypoints", 0)
+        if num_kp > 0:
+            expected_dim1 = 4 + 1 + num_kp * 3
+            for val in result_dict.values():
+                if hasattr(val, 'shape') and len(val.shape) == 3:
+                    _, dim1, dim2 = val.shape
+                    if dim1 == expected_dim1 and dim2 > dim1:
+                        return True
         return False
 
     def _postprocess_yolov8(self, result_dict, frame_width, frame_height, inference_time_ms):
@@ -433,6 +452,102 @@ class InferenceHandler:
             "model_id": self.active_model_id,
             "model_name": self.model_metadata.get("model_name", ""),
             "result_type": "detection",
+            "results": {"detections": detections, "count": len(detections)},
+            "inference_time_ms": inference_time_ms,
+            "frame_width": frame_width,
+            "frame_height": frame_height,
+            "confidence_threshold": self.confidence_threshold,
+        }
+
+    def _postprocess_yolo_pose(self, result_dict, frame_width, frame_height, inference_time_ms):
+        """Parse YOLO pose output: single tensor [1, 4+1+num_kp*3, num_detections].
+
+        For YOLO26s-pose with 17 COCO keypoints: [1, 56, 8400]
+        Per detection (transposed): [x_c, y_c, w, h, conf, kp0_x, kp0_y, kp0_conf, ...]
+        """
+        output = None
+        for val in result_dict.values():
+            if hasattr(val, 'shape') and len(val.shape) == 3:
+                output = val
+                break
+        if output is None:
+            return None
+
+        num_keypoints = self.model_metadata.get("num_keypoints", 17)
+        predictions = np.squeeze(output).T  # [8400, 56]
+
+        boxes_xywh = predictions[:, :4]
+        scores = predictions[:, 4]
+        kp_data = predictions[:, 5:]  # [8400, 51] for 17 keypoints
+
+        mask = scores > self.confidence_threshold
+        boxes_xywh = boxes_xywh[mask]
+        scores = scores[mask]
+        kp_data = kp_data[mask]
+
+        if len(scores) == 0:
+            return None
+
+        input_shape = self.model_metadata.get("input_shape", [1, 3, 640, 640])
+        input_h = input_shape[2]
+        input_w = input_shape[3]
+
+        # Convert boxes from xywh to normalized xyxy
+        boxes_xyxy = np.zeros((len(boxes_xywh), 4))
+        boxes_xyxy[:, 0] = (boxes_xywh[:, 0] - boxes_xywh[:, 2] / 2) / input_w
+        boxes_xyxy[:, 1] = (boxes_xywh[:, 1] - boxes_xywh[:, 3] / 2) / input_h
+        boxes_xyxy[:, 2] = (boxes_xywh[:, 0] + boxes_xywh[:, 2] / 2) / input_w
+        boxes_xyxy[:, 3] = (boxes_xywh[:, 1] + boxes_xywh[:, 3] / 2) / input_h
+
+        # NMS
+        indices = self._nms(boxes_xyxy, scores, iou_threshold=0.5)
+        boxes_xyxy = boxes_xyxy[indices]
+        scores = scores[indices]
+        kp_data = kp_data[indices]
+
+        # Limit detections
+        max_det = 20
+        if len(scores) > max_det:
+            top_indices = np.argsort(scores)[::-1][:max_det]
+            boxes_xyxy = boxes_xyxy[top_indices]
+            scores = scores[top_indices]
+            kp_data = kp_data[top_indices]
+
+        detections = []
+        for i in range(len(scores)):
+            # Parse keypoints: reshape [51] -> [17, 3] then normalize
+            kps_raw = kp_data[i].reshape(num_keypoints, 3)
+            keypoints = []
+            for k in range(num_keypoints):
+                kp_x = float(kps_raw[k, 0]) / input_w
+                kp_y = float(kps_raw[k, 1]) / input_h
+                kp_conf = float(kps_raw[k, 2])
+                keypoints.append({
+                    "x": round(np.clip(kp_x, 0, 1), 4),
+                    "y": round(np.clip(kp_y, 0, 1), 4),
+                    "confidence": round(kp_conf, 4),
+                })
+
+            detections.append({
+                "label": "person",
+                "score": round(float(scores[i]), 4),
+                "box": {
+                    "xmin": round(float(np.clip(boxes_xyxy[i, 0], 0, 1)), 4),
+                    "ymin": round(float(np.clip(boxes_xyxy[i, 1], 0, 1)), 4),
+                    "xmax": round(float(np.clip(boxes_xyxy[i, 2], 0, 1)), 4),
+                    "ymax": round(float(np.clip(boxes_xyxy[i, 3], 0, 1)), 4),
+                },
+                "keypoints": keypoints,
+            })
+
+        if not detections:
+            return None
+
+        return {
+            "timestamp": time.time(),
+            "model_id": self.active_model_id,
+            "model_name": self.model_metadata.get("model_name", ""),
+            "result_type": "pose",
             "results": {"detections": detections, "count": len(detections)},
             "inference_time_ms": inference_time_ms,
             "frame_width": frame_width,
