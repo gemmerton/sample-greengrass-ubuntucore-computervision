@@ -136,6 +136,30 @@ export const VlmPromptEditor: React.FC<VlmPromptEditorProps> = ({ thingName }) =
             rows={3}
           />
         </div>
+        <div className="vlm-prompt-editor__row">
+          <div className="vlm-prompt-editor__field vlm-prompt-editor__field--inline">
+            <label className="vlm-prompt-editor__label">Interval (s)</label>
+            <input
+              type="number"
+              className="vlm-prompt-editor__input"
+              value={inferenceInterval}
+              onChange={(e) => setInferenceInterval(Math.max(5, parseInt(e.target.value) || 15))}
+              min={5}
+              max={120}
+            />
+          </div>
+          <div className="vlm-prompt-editor__field vlm-prompt-editor__field--inline">
+            <label className="vlm-prompt-editor__label">Max Tokens</label>
+            <input
+              type="number"
+              className="vlm-prompt-editor__input"
+              value={maxTokens}
+              onChange={(e) => setMaxTokens(Math.max(64, parseInt(e.target.value) || 256))}
+              min={64}
+              max={1024}
+            />
+          </div>
+        </div>
       </section>
 
       <section className="vlm-prompt-editor__section">
@@ -182,34 +206,6 @@ export const VlmPromptEditor: React.FC<VlmPromptEditorProps> = ({ thingName }) =
             </div>
           </div>
         )}
-      </section>
-
-      <section className="vlm-prompt-editor__section">
-        <h4 className="vlm-prompt-editor__section-title">Parameters</h4>
-        <div className="vlm-prompt-editor__row">
-          <div className="vlm-prompt-editor__field vlm-prompt-editor__field--inline">
-            <label className="vlm-prompt-editor__label">Interval (s)</label>
-            <input
-              type="number"
-              className="vlm-prompt-editor__input"
-              value={inferenceInterval}
-              onChange={(e) => setInferenceInterval(Math.max(5, parseInt(e.target.value) || 15))}
-              min={5}
-              max={120}
-            />
-          </div>
-          <div className="vlm-prompt-editor__field vlm-prompt-editor__field--inline">
-            <label className="vlm-prompt-editor__label">Max Tokens</label>
-            <input
-              type="number"
-              className="vlm-prompt-editor__input"
-              value={maxTokens}
-              onChange={(e) => setMaxTokens(Math.max(64, parseInt(e.target.value) || 256))}
-              min={64}
-              max={1024}
-            />
-          </div>
-        </div>
       </section>
 
       <section className="vlm-prompt-editor__section">
