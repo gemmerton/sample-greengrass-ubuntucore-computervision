@@ -10,9 +10,9 @@
 }
 
 .model-selector__title {
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-semibold);
-  color: var(--color-text-primary);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-bold);
+  color: #ffffff;
 }
 
 /* Model List */
@@ -99,17 +99,17 @@
 }
 
 .model-selector__item-name {
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-semibold);
-  color: var(--color-text-primary);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-bold);
+  color: #ffffff;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .model-selector__item-meta {
-  font-size: var(--font-size-xs);
-  color: var(--color-text-tertiary);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -317,10 +317,11 @@
 
 /* Group Label */
 .model-selector__group-label {
-  font-size: 0.75rem;
+  font-size: var(--font-size-sm);
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  color: var(--text-muted, #888);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-secondary);
   margin: 12px 0 6px 0;
   padding: 0;
 }

@@ -115,14 +115,14 @@
 }
 
 .dashboard__settings-heading {
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-bold);
-  color: var(--color-text-accent);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-extrabold);
+  color: #ffb84d;
   text-transform: uppercase;
   letter-spacing: var(--letter-spacing-wider);
   margin: 0;
   padding-bottom: var(--spacing-xs);
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: 2px solid rgba(255, 184, 77, 0.3);
 }
 
 .dashboard__settings-stack {
@@ -420,7 +420,7 @@
 }
 
 .dashboard__drawer-tab--active {
-  right: 400px;
+  right: 480px;
   color: var(--color-text-bright);
   background: rgba(59, 130, 246, 0.15);
   border-color: rgba(59, 130, 246, 0.6);
@@ -468,7 +468,7 @@
 
 /* Shift tabs when drawer is open */
 .dashboard__left-tabs--shifted {
-  left: 400px;
+  left: 480px;
 }
 
 /* CV tab accent color */
@@ -525,8 +525,8 @@
 .dashboard__drawer {
   position: fixed;
   top: var(--header-height);
-  right: -400px;
-  width: 400px;
+  right: -480px;
+  width: 480px;
   height: calc(100vh - var(--header-height));
   z-index: 99;
   background: var(--color-card-bg);
@@ -544,7 +544,7 @@
 /* Left-side drawer (Settings) */
 .dashboard__drawer--left {
   right: auto;
-  left: -400px;
+  left: -480px;
   border-left: none;
   border-right: 2px solid rgba(255, 153, 0, 0.4);
   box-shadow: 8px 0 30px rgba(0, 0, 0, 0.5);
@@ -566,9 +566,9 @@
 }
 
 .dashboard__drawer-title {
-  font-size: var(--font-size-md);
-  font-weight: var(--font-weight-bold);
-  color: var(--color-text-bright);
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-extrabold);
+  color: #ffffff;
   margin: 0;
 }
 

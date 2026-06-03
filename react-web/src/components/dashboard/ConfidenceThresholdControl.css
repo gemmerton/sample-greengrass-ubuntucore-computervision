@@ -9,9 +9,9 @@
 }
 
 .confidence-threshold__label {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-base);
   font-weight: var(--font-weight-bold);
-  color: var(--color-text-primary);
+  color: #ffffff;
   letter-spacing: var(--letter-spacing-wide);
 }
 
@@ -50,7 +50,7 @@
 }
 
 .confidence-threshold__value {
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-lg);
   font-weight: var(--font-weight-bold);
   color: var(--color-primary);
   min-width: 2.5rem;
