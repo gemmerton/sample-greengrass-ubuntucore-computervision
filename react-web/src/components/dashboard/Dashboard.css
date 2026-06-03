@@ -134,7 +134,7 @@
 .dashboard__settings-field {
   min-width: 0;
   padding-bottom: var(--spacing-lg);
-  border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 2px solid rgba(255, 255, 255, 0.18);
 }
 
 .dashboard__settings-field:last-child {
