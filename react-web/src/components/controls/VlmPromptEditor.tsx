@@ -97,22 +97,43 @@ export const VlmPromptEditor: React.FC<VlmPromptEditorProps> = ({ thingName }) =
 
   return (
     <div className="vlm-prompt-editor">
-      <div className="vlm-prompt-editor__presets">
-        <label className="vlm-prompt-editor__label">Preset</label>
-        <select
-          className="vlm-prompt-editor__select"
-          onChange={(e) => handlePreset(e.target.value)}
-          defaultValue=""
-        >
-          <option value="" disabled>Select a preset...</option>
-          {Object.keys(PRESETS).map((name) => (
-            <option key={name} value={name}>{name}</option>
-          ))}
-        </select>
-      </div>
+      <section className="vlm-prompt-editor__section">
+        <h4 className="vlm-prompt-editor__section-title">Scenario</h4>
+        <div className="vlm-prompt-editor__presets">
+          <label className="vlm-prompt-editor__label">Preset</label>
+          <select
+            className="vlm-prompt-editor__select"
+            onChange={(e) => handlePreset(e.target.value)}
+            defaultValue=""
+          >
+            <option value="" disabled>Select a preset...</option>
+            {Object.keys(PRESETS).map((name) => (
+              <option key={name} value={name}>{name}</option>
+            ))}
+          </select>
+        </div>
+        <div className="vlm-prompt-editor__field">
+          <label className="vlm-prompt-editor__label">System Prompt</label>
+          <textarea
+            className="vlm-prompt-editor__textarea"
+            value={systemPrompt}
+            onChange={(e) => setSystemPrompt(e.target.value)}
+            rows={4}
+          />
+        </div>
+        <div className="vlm-prompt-editor__field">
+          <label className="vlm-prompt-editor__label">User Prompt</label>
+          <textarea
+            className="vlm-prompt-editor__textarea"
+            value={userPrompt}
+            onChange={(e) => setUserPrompt(e.target.value)}
+            rows={3}
+          />
+        </div>
+      </section>
 
-      <div className="vlm-prompt-editor__field">
-        <label className="vlm-prompt-editor__label">Assessment Mode</label>
+      <section className="vlm-prompt-editor__section">
+        <h4 className="vlm-prompt-editor__section-title">Assessment Mode</h4>
         <div className="vlm-prompt-editor__mode-toggle">
           <button
             className={`vlm-prompt-editor__mode-btn ${mode === 'continuous' ? 'vlm-prompt-editor__mode-btn--active' : ''}`}
@@ -129,82 +150,64 @@ export const VlmPromptEditor: React.FC<VlmPromptEditorProps> = ({ thingName }) =
             CV-Triggered
           </button>
         </div>
-      </div>
-
-      {mode === 'triggered' && (
-        <div className="vlm-prompt-editor__trigger-config">
-          <div className="vlm-prompt-editor__field">
-            <label className="vlm-prompt-editor__label">Trigger Classes</label>
-            <input
-              type="text"
-              className="vlm-prompt-editor__input"
-              value={triggerClasses.join(', ')}
-              onChange={(e) => setTriggerClasses(e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
-              placeholder="person, truck, excavator"
-            />
-            <span className="vlm-prompt-editor__hint">Comma-separated CV detection labels</span>
+        {mode === 'triggered' && (
+          <div className="vlm-prompt-editor__trigger-config">
+            <div className="vlm-prompt-editor__field">
+              <label className="vlm-prompt-editor__label">Trigger Classes</label>
+              <input
+                type="text"
+                className="vlm-prompt-editor__input"
+                value={triggerClasses.join(', ')}
+                onChange={(e) => setTriggerClasses(e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
+                placeholder="person, truck, excavator"
+              />
+              <span className="vlm-prompt-editor__hint">Comma-separated CV detection labels</span>
+            </div>
+            <div className="vlm-prompt-editor__field">
+              <label className="vlm-prompt-editor__label">Cooldown (s)</label>
+              <input
+                type="number"
+                className="vlm-prompt-editor__input"
+                value={triggerCooldown}
+                onChange={(e) => setTriggerCooldown(Math.max(5, parseInt(e.target.value) || 10))}
+                min={5}
+                max={120}
+              />
+            </div>
           </div>
-          <div className="vlm-prompt-editor__field">
-            <label className="vlm-prompt-editor__label">Cooldown (s)</label>
+        )}
+      </section>
+
+      <section className="vlm-prompt-editor__section">
+        <h4 className="vlm-prompt-editor__section-title">Parameters</h4>
+        <div className="vlm-prompt-editor__row">
+          <div className="vlm-prompt-editor__field vlm-prompt-editor__field--inline">
+            <label className="vlm-prompt-editor__label">Interval (s)</label>
             <input
               type="number"
               className="vlm-prompt-editor__input"
-              value={triggerCooldown}
-              onChange={(e) => setTriggerCooldown(Math.max(5, parseInt(e.target.value) || 10))}
+              value={inferenceInterval}
+              onChange={(e) => setInferenceInterval(Math.max(5, parseInt(e.target.value) || 15))}
               min={5}
               max={120}
             />
           </div>
+          <div className="vlm-prompt-editor__field vlm-prompt-editor__field--inline">
+            <label className="vlm-prompt-editor__label">Max Tokens</label>
+            <input
+              type="number"
+              className="vlm-prompt-editor__input"
+              value={maxTokens}
+              onChange={(e) => setMaxTokens(Math.max(64, parseInt(e.target.value) || 256))}
+              min={64}
+              max={1024}
+            />
+          </div>
         </div>
-      )}
+      </section>
 
-      <div className="vlm-prompt-editor__field">
-        <label className="vlm-prompt-editor__label">System Prompt</label>
-        <textarea
-          className="vlm-prompt-editor__textarea"
-          value={systemPrompt}
-          onChange={(e) => setSystemPrompt(e.target.value)}
-          rows={4}
-        />
-      </div>
-
-      <div className="vlm-prompt-editor__field">
-        <label className="vlm-prompt-editor__label">User Prompt</label>
-        <textarea
-          className="vlm-prompt-editor__textarea"
-          value={userPrompt}
-          onChange={(e) => setUserPrompt(e.target.value)}
-          rows={3}
-        />
-      </div>
-
-      <div className="vlm-prompt-editor__row">
-        <div className="vlm-prompt-editor__field vlm-prompt-editor__field--inline">
-          <label className="vlm-prompt-editor__label">Interval (s)</label>
-          <input
-            type="number"
-            className="vlm-prompt-editor__input"
-            value={inferenceInterval}
-            onChange={(e) => setInferenceInterval(Math.max(5, parseInt(e.target.value) || 15))}
-            min={5}
-            max={120}
-          />
-        </div>
-        <div className="vlm-prompt-editor__field vlm-prompt-editor__field--inline">
-          <label className="vlm-prompt-editor__label">Max Tokens</label>
-          <input
-            type="number"
-            className="vlm-prompt-editor__input"
-            value={maxTokens}
-            onChange={(e) => setMaxTokens(Math.max(64, parseInt(e.target.value) || 256))}
-            min={64}
-            max={1024}
-          />
-        </div>
-      </div>
-
-      <div className="vlm-prompt-editor__field">
-        <label className="vlm-prompt-editor__label">Alert Rules (max 3)</label>
+      <section className="vlm-prompt-editor__section">
+        <h4 className="vlm-prompt-editor__section-title">Alert Rules</h4>
         <div className="vlm-prompt-editor__alert-rules">
           {alertRules.map((rule, i) => (
             <div key={i} className="vlm-prompt-editor__alert-rule-row">
@@ -239,7 +242,7 @@ export const VlmPromptEditor: React.FC<VlmPromptEditorProps> = ({ thingName }) =
             </button>
           )}
         </div>
-      </div>
+      </section>
 
       <button
         className="vlm-prompt-editor__apply"

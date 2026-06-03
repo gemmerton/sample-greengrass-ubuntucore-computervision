@@ -1,12 +1,28 @@
 .vlm-prompt-editor {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 12px;
 }
 
-.vlm-prompt-editor > div + div {
-  padding-top: 16px;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
+.vlm-prompt-editor__section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-bottom: 16px;
+  border-bottom: 2px solid rgba(255, 255, 255, 0.12);
+}
+
+.vlm-prompt-editor__section:last-of-type {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.vlm-prompt-editor__section-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #ffffff;
+  margin: 0;
+  letter-spacing: 0.02em;
 }
 
 .vlm-prompt-editor--loading {
