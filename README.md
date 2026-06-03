@@ -285,6 +285,56 @@ The React dashboard is located in the `react-web/` directory. After running the 
 - Only downloads the image when it changes (efficient ETag-based detection)
 - No image history is stored - only the most recent inference result is shown
 
+### Deploying the Dashboard (S3 + CloudFront)
+
+To host the dashboard as a static site with HTTPS via CloudFront:
+
+```bash
+python3 scripts/setup_aws_resources.py --stage hosting --region eu-west-1
+```
+
+This single command:
+1. Creates a private S3 bucket (`ubuntu-core-gg-demo-dashboard`) with all public access blocked
+2. Creates a CloudFront Origin Access Control (OAC)
+3. Creates a CloudFront distribution (HTTPS, SPA routing)
+4. Sets bucket policy allowing only CloudFront access
+5. Builds the React app (`npm run build`)
+6. Uploads all files to S3 with correct content types and cache headers
+7. Invalidates the CloudFront cache
+
+On completion it prints the CloudFront URL (e.g. `https://d1234abcdef.cloudfront.net`). The first deployment takes 5-10 minutes for CloudFront to propagate.
+
+To use a custom bucket name:
+```bash
+python3 scripts/setup_aws_resources.py --stage hosting --region eu-west-1 --hosting-bucket my-dashboard-bucket
+```
+
+Re-running the command is safe (idempotent) — it reuses existing resources and deploys the latest build.
+
+### SMS Alert Notifications
+
+The VLM alert rules can send SMS notifications when a triggered alert meets cooldown criteria. This requires provisioning an IoT Core Rule and SNS topic:
+
+```bash
+python3 scripts/setup_aws_resources.py --stage sms-alerts --region eu-west-1 --sms-phone "+447700900123"
+```
+
+Replace the phone number with your actual number in E.164 format (country code + number, no spaces).
+
+This creates:
+- An SNS topic (`ubuntu-core-gg-demo-sms-alerts`)
+- An SMS subscription to the specified phone number
+- An IAM role allowing IoT Core to publish to SNS
+- An IoT Core Rule that routes messages from `camera/alerts/sms` to SNS
+
+Once provisioned, enable SMS in the React dashboard:
+1. Open the VLM settings panel → Alert Rules section
+2. Toggle **SMS Notifications** to **On**
+3. Set the **SMS Cooldown** (minimum seconds between messages for the same rule, default 300)
+4. Click **Apply**
+
+When a VLM alert rule triggers and the cooldown has elapsed, an SMS is sent to the configured phone number. The cooldown is enforced per-rule on the device to prevent duplicate messages.
+
 ### Dashboard CORS Configuration
 
 The S3 bucket must have CORS configured to allow the web dashboard to access images. The setup script automatically configures CORS when creating the bucket. However, if you experience CORS errors:
