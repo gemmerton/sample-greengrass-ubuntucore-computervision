@@ -45,7 +45,10 @@
       "Bash(AWS_PROFILE=\"gemmerto+ubuntu-Admin\" .venv/bin/python3 *)",
       "Skill(superpowers:brainstorming)",
       "Skill(superpowers:writing-plans)",
-      "Skill(superpowers:subagent-driven-development)"
+      "Skill(superpowers:subagent-driven-development)",
+      "Bash(ovc --version)",
+      "Bash(/Users/gemmerto/local-dev/Git-Github/sample-greengrass-ubuntucore-computervision/.venv-convert/bin/python *)",
+      "Bash(AWS_PROFILE=gemmerto+ubuntu-Admin python3 *)"
     ]
   }
 }
