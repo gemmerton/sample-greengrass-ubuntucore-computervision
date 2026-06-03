@@ -249,16 +249,24 @@ export const VlmPromptEditor: React.FC<VlmPromptEditorProps> = ({ thingName }) =
           )}
         </div>
         <div className="vlm-prompt-editor__sms-config">
-          <div className="vlm-prompt-editor__sms-toggle">
+          <div className="vlm-prompt-editor__field">
             <label className="vlm-prompt-editor__label">SMS Notifications</label>
-            <button
-              type="button"
-              className={`vlm-prompt-editor__toggle-btn ${smsEnabled ? 'vlm-prompt-editor__toggle-btn--active' : ''}`}
-              onClick={() => setSmsEnabled(!smsEnabled)}
-              aria-pressed={smsEnabled}
-            >
-              {smsEnabled ? 'Enabled' : 'Disabled'}
-            </button>
+            <div className="vlm-prompt-editor__mode-toggle">
+              <button
+                className={`vlm-prompt-editor__mode-btn ${!smsEnabled ? 'vlm-prompt-editor__mode-btn--active' : ''}`}
+                onClick={() => setSmsEnabled(false)}
+                type="button"
+              >
+                Off
+              </button>
+              <button
+                className={`vlm-prompt-editor__mode-btn ${smsEnabled ? 'vlm-prompt-editor__mode-btn--active' : ''}`}
+                onClick={() => setSmsEnabled(true)}
+                type="button"
+              >
+                On
+              </button>
+            </div>
           </div>
           {smsEnabled && (
             <div className="vlm-prompt-editor__field">
