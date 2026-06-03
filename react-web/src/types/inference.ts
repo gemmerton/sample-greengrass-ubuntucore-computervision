@@ -5,10 +5,17 @@ export interface BoundingBox {
   ymax: number;
 }
 
+export interface Keypoint {
+  x: number;
+  y: number;
+  confidence: number;
+}
+
 export interface Detection {
   label: string;
   score: number;
   box: BoundingBox;
+  keypoints?: Keypoint[];
 }
 
 export interface Classification {
@@ -30,7 +37,7 @@ export interface InferenceResult {
   timestamp: number;
   model_id: string;
   model_name: string;
-  result_type: 'detection' | 'classification';
+  result_type: 'detection' | 'classification' | 'pose';
   results: DetectionResults | ClassificationResults;
   inference_time_ms: number;
   frame_width?: number;
