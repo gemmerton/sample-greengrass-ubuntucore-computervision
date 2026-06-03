@@ -812,6 +812,100 @@ class AWSResourcesSetup:
         print(f"{'='*60}\n")
         return dist_domain
 
+    def setup_sms_alerts(self, phone_number):
+        """Provision IoT Rule + SNS topic + subscription for SMS alerts."""
+        topic_name = f'{self.project_name}-sms-alerts'
+        rule_name = f'{self.project_name.replace("-", "_")}_sms_alert_rule'
+        role_name = f'{self.project_name}-iot-sns-role'
+
+        print(f"\n{'='*60}")
+        print(f"Setting up SMS alert notifications")
+        print(f"{'='*60}\n")
+
+        # 1. Create SNS topic
+        sns = boto3.client('sns', region_name=self.aws_region)
+        topic_resp = sns.create_topic(Name=topic_name)
+        topic_arn = topic_resp['TopicArn']
+        print(f"SNS topic: {topic_arn}")
+
+        # 2. Subscribe phone number
+        sns.subscribe(
+            TopicArn=topic_arn,
+            Protocol='sms',
+            Endpoint=phone_number,
+        )
+        print(f"SMS subscription: {phone_number}")
+
+        # 3. Create IAM role for IoT → SNS
+        trust_policy = {
+            "Version": "2012-10-17",
+            "Statement": [{
+                "Effect": "Allow",
+                "Principal": {"Service": "iot.amazonaws.com"},
+                "Action": "sts:AssumeRole"
+            }]
+        }
+        try:
+            self.iam.create_role(
+                RoleName=role_name,
+                AssumeRolePolicyDocument=json.dumps(trust_policy),
+            )
+            print(f"Created IAM role: {role_name}")
+        except ClientError as e:
+            if e.response['Error']['Code'] in ('EntityAlreadyExists', 'EntityAlreadyExistsException'):
+                print(f"IAM role already exists: {role_name}")
+            else:
+                raise
+
+        sns_policy = {
+            "Version": "2012-10-17",
+            "Statement": [{
+                "Effect": "Allow",
+                "Action": "sns:Publish",
+                "Resource": topic_arn,
+            }]
+        }
+        self.iam.put_role_policy(
+            RoleName=role_name,
+            PolicyName=f'{role_name}-sns-publish',
+            PolicyDocument=json.dumps(sns_policy),
+        )
+        role_arn = f"arn:aws:iam::{self.account_id}:role/{role_name}"
+
+        # 4. Create IoT Core Rule
+        rule_payload = {
+            'sql': "SELECT rule, detail, risk_level, thing_name, timestamp FROM 'camera/alerts/sms'",
+            'actions': [{
+                'sns': {
+                    'targetArn': topic_arn,
+                    'roleArn': role_arn,
+                    'messageFormat': 'RAW',
+                }
+            }],
+            'ruleDisabled': False,
+        }
+        try:
+            self.iot.create_topic_rule(
+                ruleName=rule_name,
+                topicRulePayload=rule_payload,
+            )
+            print(f"Created IoT Rule: {rule_name}")
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'ResourceAlreadyExistsException':
+                self.iot.replace_topic_rule(
+                    ruleName=rule_name,
+                    topicRulePayload=rule_payload,
+                )
+                print(f"Updated IoT Rule: {rule_name}")
+            else:
+                raise
+
+        print(f"\n{'='*60}")
+        print(f"SMS alerts configured!")
+        print(f"Phone: {phone_number}")
+        print(f"Topic: camera/alerts/sms → SNS → SMS")
+        print(f"{'='*60}\n")
+
     def validate_password(self, password):
         """Validate password against Cognito User Pool password policy."""
         if len(password) < 8:
@@ -1031,8 +1125,9 @@ def main():
     parser.add_argument('--s3-bucket', help='S3 bucket name for images')
     parser.add_argument('--kvs-stream-name', help='KVS stream name (default: <project-name>-stream)')
     parser.add_argument('--demo-password', help='Password for demo user (must be 8+ chars with uppercase, lowercase, number, and special character)')
-    parser.add_argument('--stage', choices=['setup', 'hosting'], help='Run a specific stage only')
+    parser.add_argument('--stage', choices=['setup', 'hosting', 'sms-alerts'], help='Run a specific stage only')
     parser.add_argument('--hosting-bucket', help='S3 bucket name for dashboard hosting (default: <project-name>-dashboard)')
+    parser.add_argument('--sms-phone', help='Phone number for SMS alerts (E.164 format, e.g. +447700900123)')
 
     args = parser.parse_args()
 
@@ -1041,6 +1136,10 @@ def main():
 
         if args.stage == 'hosting':
             setup.setup_hosting(args.hosting_bucket)
+        elif args.stage == 'sms-alerts':
+            if not args.sms_phone:
+                parser.error('--sms-phone is required for sms-alerts stage')
+            setup.setup_sms_alerts(args.sms_phone)
         else:
             # Default: full setup
             demo_password = args.demo_password
