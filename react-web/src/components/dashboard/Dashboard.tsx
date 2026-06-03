@@ -27,7 +27,7 @@ import { S3Provider } from '../../contexts/S3Context';
 import { MqttProvider, useMqtt } from '../../contexts/MqttContext';
 import { useAuthenticatedAWS } from '../../hooks/useAuthenticatedAWS';
 import { KvsPlayer } from './KvsPlayer';
-import type { AwsCredentialIdentity } from '@aws-sdk/types';
+import type { CredentialsInput } from '../../services/kvsService';
 import { config } from '../../utils/config';
 
 // import { S3Object, S3Error } from '../../types/s3';  // S3 features temporarily hidden
@@ -119,7 +119,7 @@ const DashboardContent: React.FC<DashboardProps> = ({
                   <KvsPlayer
                     streamName={(import.meta as any).env?.VITE_KVS_STREAM_NAME ?? ''}
                     region={region ?? config.aws.region}
-                    credentials={credentials as unknown as AwsCredentialIdentity}
+                    credentials={credentials as CredentialsInput}
                     onVideoReady={setVideoElement}
                   />
                   <InferenceOverlay result={latestResult} videoElement={videoElement} vlmRiskLevel={vlmLatestResult?.response?.risk_level ?? null} />

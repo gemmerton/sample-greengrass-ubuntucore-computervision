@@ -1,13 +1,13 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import Hls from "hls.js";
-import type { AwsCredentialIdentity } from "@aws-sdk/types";
+import type { CredentialsInput } from "../../services/kvsService";
 import { getHlsStreamingUrl } from "../../services/kvsService";
 import "./KvsPlayer.css";
 
 interface KvsPlayerProps {
   streamName: string;
   region: string;
-  credentials: AwsCredentialIdentity;
+  credentials: CredentialsInput;
   onVideoReady?: (videoEl: HTMLVideoElement) => void;
 }
 

@@ -11,17 +11,22 @@ import {
   HLSDiscontinuityMode,
   HLSDisplayFragmentTimestamp,
 } from "@aws-sdk/client-kinesis-video-archived-media";
-import type { AwsCredentialIdentity } from "@aws-sdk/types";
+import type { AwsCredentialIdentity, Provider } from "@aws-sdk/types";
 import type { HlsSessionUrl, KvsStreamConfig } from "../types/kvs";
+
+export type CredentialsInput = AwsCredentialIdentity | Provider<AwsCredentialIdentity>;
 
 export async function getHlsStreamingUrl(
   config: KvsStreamConfig,
-  credentials: AwsCredentialIdentity
+  credentials: CredentialsInput
 ): Promise<HlsSessionUrl> {
+  // Resolve credentials fresh each call to avoid using stale temporary creds.
+  const resolved = typeof credentials === "function" ? await credentials() : credentials;
+
   // KVS requires a two-step URL resolution: first obtain the stream-specific
   // data endpoint, then call GetHLSStreamingSessionURL against that endpoint.
   // Using the main regional endpoint for GetHLSStreamingSessionURL returns 400.
-  const kvsClient = new KinesisVideoClient({ region: config.region, credentials });
+  const kvsClient = new KinesisVideoClient({ region: config.region, credentials: resolved });
   const endpointResponse = await kvsClient.send(
     new GetDataEndpointCommand({
       StreamName: config.streamName,
@@ -35,7 +40,7 @@ export async function getHlsStreamingUrl(
 
   const client = new KinesisVideoArchivedMediaClient({
     region: config.region,
-    credentials,
+    credentials: resolved,
     endpoint: dataEndpoint,
   });
   const command = new GetHLSStreamingSessionURLCommand({
