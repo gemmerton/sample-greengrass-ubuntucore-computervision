@@ -10,6 +10,8 @@ Creates required AWS resources for the entire project:
 - IoT policy (for React dashboard MQTT access)
 """
 import sys
+import os
+import subprocess
 import boto3
 import json
 import argparse
@@ -695,6 +697,83 @@ class AWSResourcesSetup:
             Policy=json.dumps(policy)
         )
         print(f"Set bucket policy for CloudFront OAC access")
+
+    def build_react_app(self):
+        """Build the React app. Installs dependencies if needed."""
+        react_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'react-web')
+
+        if not os.path.isdir(os.path.join(react_dir, 'node_modules')):
+            print("Installing React app dependencies...")
+            subprocess.run(['npm', 'install'], cwd=react_dir, check=True)
+
+        print("Building React app...")
+        subprocess.run(['npm', 'run', 'build'], cwd=react_dir, check=True)
+
+        dist_dir = os.path.join(react_dir, 'dist')
+        if not os.path.isdir(dist_dir):
+            raise RuntimeError(f"Build output not found at {dist_dir}")
+        print(f"Build complete: {dist_dir}")
+        return dist_dir
+
+    def sync_to_s3(self, dist_dir, bucket_name):
+        """Upload build output to S3 with correct content types and cache headers."""
+        content_type_map = {
+            '.html': 'text/html',
+            '.js': 'application/javascript',
+            '.css': 'text/css',
+            '.json': 'application/json',
+            '.svg': 'image/svg+xml',
+            '.png': 'image/png',
+            '.jpg': 'image/jpeg',
+            '.jpeg': 'image/jpeg',
+            '.ico': 'image/x-icon',
+            '.woff': 'font/woff',
+            '.woff2': 'font/woff2',
+            '.ttf': 'font/ttf',
+            '.map': 'application/json',
+        }
+
+        file_count = 0
+        for root, _dirs, files in os.walk(dist_dir):
+            for filename in files:
+                filepath = os.path.join(root, filename)
+                key = os.path.relpath(filepath, dist_dir)
+
+                ext = os.path.splitext(filename)[1].lower()
+                content_type = content_type_map.get(ext, 'application/octet-stream')
+
+                if filename == 'index.html':
+                    cache_control = 'no-cache'
+                else:
+                    cache_control = 'max-age=31536000, immutable'
+
+                with open(filepath, 'rb') as f:
+                    self.s3.put_object(
+                        Bucket=bucket_name,
+                        Key=key,
+                        Body=f.read(),
+                        ContentType=content_type,
+                        CacheControl=cache_control,
+                    )
+                file_count += 1
+
+        print(f"Uploaded {file_count} files to s3://{bucket_name}/")
+
+    def invalidate_cloudfront_cache(self, distribution_id):
+        """Create a CloudFront invalidation for all paths."""
+        import time as _time
+        response = self.cloudfront.create_invalidation(
+            DistributionId=distribution_id,
+            InvalidationBatch={
+                'Paths': {
+                    'Quantity': 1,
+                    'Items': ['/*'],
+                },
+                'CallerReference': str(int(_time.time())),
+            }
+        )
+        invalidation_id = response['Invalidation']['Id']
+        print(f"Created cache invalidation: {invalidation_id}")
 
     def validate_password(self, password):
         """Validate password against Cognito User Pool password policy."""
