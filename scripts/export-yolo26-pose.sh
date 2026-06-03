@@ -1,13 +1,11 @@
 #!/bin/bash
 set -euo pipefail
 
-# Uses YOLOv8s-pose (same tensor format as YOLO26-pose: [1, 56, 8400])
-# Swap to yolo26s-pose.pt once ultralytics>=26.0.0 ships on PyPI.
-MODEL_NAME="yolov8s-pose"
+MODEL_NAME="yolo26s-pose"
 OUTPUT_DIR="./${MODEL_NAME}_openvino_model"
 VENV_DIR="./venv-yolo26-export"
 
-echo "=== Exporting ${MODEL_NAME} to OpenVINO IR ==="
+echo "=== Exporting YOLO26s-pose to OpenVINO IR ==="
 
 # Create and activate venv
 if [ ! -d "$VENV_DIR" ]; then
@@ -19,7 +17,7 @@ source "$VENV_DIR/bin/activate"
 # Install dependencies
 echo "Installing ultralytics..."
 pip install --quiet --upgrade pip
-pip install --quiet "ultralytics>=8.4.0" "openvino>=2025.0,<2026.0"
+pip install --quiet "ultralytics>=8.4.0" "openvino>=2024.0"
 
 # Export model
 python3 -c "
