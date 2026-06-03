@@ -42,6 +42,8 @@ export interface VlmConfig {
   trigger_classes: string[];
   trigger_cooldown: number;
   alert_rules: string[];
+  sms_enabled: boolean;
+  sms_cooldown_seconds: number;
 }
 
 export interface VlmQuery {
