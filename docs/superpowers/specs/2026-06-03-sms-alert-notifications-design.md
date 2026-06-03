@@ -62,21 +62,20 @@ Action: Publish to an SNS topic. No filtering needed — the device already did 
   "vlm_config": {
     ...existing fields...,
     "sms_enabled": true,
-    "sms_phone_number": "+447700900123",
     "sms_cooldown_seconds": 300
   }
 }
 ```
 
 - `sms_enabled`: Master toggle. When false, no messages published to `camera/alerts/sms` regardless of alerts.
-- `sms_phone_number`: E.164 format. Used by the setup script to create the SNS subscription. Stored in shadow so the React UI can display/edit it.
 - `sms_cooldown_seconds`: Minimum seconds between SMS messages for the same rule. Default 300 (5 minutes). Configurable from the React UI.
+
+Note: The phone number is configured at the AWS level (SNS subscription) via the setup script's `--sms-phone` argument. It is not configurable from the UI since changing it requires creating/removing SNS subscriptions.
 
 ### React UI additions
 
 In the VLM config panel's "Alert Rules" section, add:
 - **SMS Notifications** toggle (maps to `sms_enabled`)
-- **Phone Number** input field (E.164 format, maps to `sms_phone_number`)
 - **SMS Cooldown** input field in seconds (maps to `sms_cooldown_seconds`)
 
 ## MQTT Message Format (`camera/alerts/sms`)
@@ -114,7 +113,7 @@ self._sms_last_sent = {}  # rule_text -> timestamp
 
 # In the alert evaluation path
 def _maybe_publish_sms_alert(self, alert, response):
-    if not self.sms_enabled or not self.sms_phone_number:
+    if not self.sms_enabled:
         return
     rule_key = alert["rule"].lower().strip()
     now = time.time()
