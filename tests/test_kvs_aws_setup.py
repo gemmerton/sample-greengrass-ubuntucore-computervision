@@ -2,7 +2,7 @@ import sys, os, json
 from unittest.mock import MagicMock, patch
 from botocore.exceptions import ClientError
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), 'scripts'))
 
 from setup_aws_resources import AWSResourcesSetup
 

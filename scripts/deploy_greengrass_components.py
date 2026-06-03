@@ -35,7 +35,7 @@ class GreengrassDeployer:
         # Get AWS account ID
         self.account_id = self.sts_client.get_caller_identity()['Account']
         
-        self.components_dir = Path('greengrass-components')
+        self.components_dir = Path(os.path.dirname(os.path.abspath(__file__))).parent / 'greengrass-components'
         self.recipes_dir = self.components_dir / 'recipes'
         self.artifacts_dir = self.components_dir / 'artifacts'
 

@@ -20,7 +20,7 @@ The `.env` file is automatically created and populated when you run the AWS reso
 
 ```bash
 # From project root directory
-python3 deploy_greengrass_components.py --stage setup --s3-bucket your-bucket-name --region us-east-1
+python3 scripts/deploy_greengrass_components.py --stage setup --s3-bucket your-bucket-name --region us-east-1
 ```
 
 This will create all required AWS resources and generate the `.env` file with the correct configuration.

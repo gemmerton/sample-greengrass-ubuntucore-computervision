@@ -115,7 +115,7 @@ During configuration, you will be prompted to enter your IAM user's access key a
 Before deploying components, create the required AWS resources:
 
 ```bash
-python3 setup_aws_resources.py --s3-bucket your-bucket-name --region us-east-1
+python3 scripts/setup_aws_resources.py --s3-bucket your-bucket-name --region us-east-1
 ```
 
 You will be prompted to enter a password for the demo user (`demo@example.com`). The password must meet these requirements:
@@ -127,7 +127,7 @@ You will be prompted to enter a password for the demo user (`demo@example.com`).
 
 Alternatively, provide the password via command line:
 ```bash
-python3 setup_aws_resources.py --s3-bucket your-bucket-name --region us-east-1 --demo-password "YourSecure123!"
+python3 scripts/setup_aws_resources.py --s3-bucket your-bucket-name --region us-east-1 --demo-password "YourSecure123!"
 ```
 
 This creates:
@@ -148,24 +148,24 @@ You can deploy using either interactive mode (recommended) or command line mode.
 Simply run the script and follow the prompts:
 
 ```bash
-python3 deploy_greengrass_components.py
+python3 scripts/deploy_greengrass_components.py
 ```
 
 #### Option B: Command Line Mode
 
 **Full deployment (creates components and deploys to device):**
 ```bash
-python3 deploy_greengrass_components.py --stage full --thing-name "YourDevice" --s3-bucket "your-bucket" --region us-east-1
+python3 scripts/deploy_greengrass_components.py --stage full --thing-name "YourDevice" --s3-bucket "your-bucket" --region us-east-1
 ```
 
 **Two-stage deployment (for multiple devices):**
 ```bash
 # Stage 1: Create components (run once) - creates S3 bucket if needed
-python3 deploy_greengrass_components.py --stage create --s3-bucket "your-bucket" --region us-east-1
+python3 scripts/deploy_greengrass_components.py --stage create --s3-bucket "your-bucket" --region us-east-1
 
 # Stage 2: Deploy to devices (run for each device)
-python3 deploy_greengrass_components.py --stage deploy --thing-name "Device1" --region us-east-1
-python3 deploy_greengrass_components.py --stage deploy --thing-name "Device2" --region us-east-1
+python3 scripts/deploy_greengrass_components.py --stage deploy --thing-name "Device1" --region us-east-1
+python3 scripts/deploy_greengrass_components.py --stage deploy --thing-name "Device2" --region us-east-1
 ```
 
 
@@ -217,10 +217,10 @@ Use the `--force` flag when:
 
 ```bash
 # Recreate components with corrected configuration
-python3 deploy_greengrass_components.py --stage create --s3-bucket correct-bucket --region us-east-1 --force
+python3 scripts/deploy_greengrass_components.py --stage create --s3-bucket correct-bucket --region us-east-1 --force
 
 # Or full redeployment (recommended)
-python3 deploy_greengrass_components.py --stage full --thing-name "YourDevice" --s3-bucket correct-bucket --region us-east-1 --force
+python3 scripts/deploy_greengrass_components.py --stage full --thing-name "YourDevice" --s3-bucket correct-bucket --region us-east-1 --force
 ```
 
 ### What the `--force` Flag Does
@@ -252,7 +252,7 @@ Without `--force`, the script:
 
 - **Wrong S3 Bucket Name in Logs**: The component is using an old configuration. Run with `--force` to recreate components with the correct bucket name:
   ```bash
-  python3 deploy_greengrass_components.py --stage full --thing-name "YourDevice" --s3-bucket correct-bucket --region us-east-1 --force
+  python3 scripts/deploy_greengrass_components.py --stage full --thing-name "YourDevice" --s3-bucket correct-bucket --region us-east-1 --force
   ```
 
 - **Configuration Not Updating**: Old deployment configuration may be overriding recipe defaults. The deployment script now automatically resets configuration, but if you have an existing deployment with overrides, use `--force` to create a fresh deployment.
@@ -267,7 +267,7 @@ Without `--force`, the script:
 
 - **CORS Errors in Dashboard**: Run the setup script to configure CORS on your S3 bucket:
   ```bash
-  python3 setup_aws_resources.py --s3-bucket your-bucket-name --region us-east-1
+  python3 scripts/setup_aws_resources.py --s3-bucket your-bucket-name --region us-east-1
   ```
 
 ## Building the Snaps
@@ -291,7 +291,7 @@ The S3 bucket must have CORS configured to allow the web dashboard to access ima
 
 1. Run the setup script to configure CORS:
    ```bash
-   python3 setup_aws_resources.py --s3-bucket your-bucket-name --region us-east-1
+   python3 scripts/setup_aws_resources.py --s3-bucket your-bucket-name --region us-east-1
    ```
 
 2. Or manually configure CORS in the AWS S3 console with these settings:

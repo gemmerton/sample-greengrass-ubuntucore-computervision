@@ -700,7 +700,8 @@ class AWSResourcesSetup:
 
     def build_react_app(self):
         """Build the React app. Installs dependencies if needed."""
-        react_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'react-web')
+        repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        react_dir = os.path.join(repo_root, 'react-web')
 
         if not os.path.isdir(os.path.join(react_dir, 'node_modules')):
             print("Installing React app dependencies...")
@@ -893,9 +894,11 @@ REACT_APP_MQTT_TOPIC=camera/inference
 REACT_APP_IOT_POLICY_NAME={iot_policy_name}
 """
         
-        with open('react-web/.env', 'w', encoding='utf-8') as f:
+        repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        env_path = os.path.join(repo_root, 'react-web', '.env')
+        with open(env_path, 'w', encoding='utf-8') as f:
             f.write(env_content)
-        print("Created react-web/.env file")
+        print(f"Created {env_path}")
 
     def create_kvs_stream(self, stream_name: str, retention_hours: int = 24) -> str:
         """Create a KVS stream or return the ARN of the existing one."""
