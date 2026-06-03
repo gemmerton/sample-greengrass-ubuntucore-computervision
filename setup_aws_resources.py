@@ -30,6 +30,7 @@ class AWSResourcesSetup:
         self.sts = boto3.client('sts', region_name=aws_region)
         self.s3 = boto3.client('s3', region_name=aws_region)
         self.kvs = boto3.client('kinesisvideo', region_name=aws_region)
+        self.cloudfront = boto3.client('cloudfront')
 
         self.account_id = self.sts.get_caller_identity()['Account']
 
@@ -512,6 +513,37 @@ class AWSResourcesSetup:
         except ClientError as e:
             print(f"Warning: Failed to configure CORS: {e}")
         
+        return bucket_name
+
+    def create_hosting_bucket(self, bucket_name):
+        """Create S3 bucket for static hosting with all public access blocked."""
+        try:
+            self.s3.head_bucket(Bucket=bucket_name)
+            print(f"Hosting bucket already exists: {bucket_name}")
+        except ClientError as e:
+            error_code = e.response['Error']['Code']
+            if error_code in ('404', 'NoSuchBucket'):
+                if self.aws_region == 'us-east-1':
+                    self.s3.create_bucket(Bucket=bucket_name)
+                else:
+                    self.s3.create_bucket(
+                        Bucket=bucket_name,
+                        CreateBucketConfiguration={'LocationConstraint': self.aws_region}
+                    )
+                print(f"Created hosting bucket: {bucket_name}")
+            else:
+                raise
+
+        self.s3.put_public_access_block(
+            Bucket=bucket_name,
+            PublicAccessBlockConfiguration={
+                'BlockPublicAcls': True,
+                'IgnorePublicAcls': True,
+                'BlockPublicPolicy': True,
+                'RestrictPublicBuckets': True,
+            }
+        )
+        print(f"Public access blocked on: {bucket_name}")
         return bucket_name
 
     def validate_password(self, password):
