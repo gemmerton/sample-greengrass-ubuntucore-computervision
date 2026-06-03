@@ -775,6 +775,42 @@ class AWSResourcesSetup:
         invalidation_id = response['Invalidation']['Id']
         print(f"Created cache invalidation: {invalidation_id}")
 
+    def setup_hosting(self, hosting_bucket=None):
+        """Provision S3 + CloudFront hosting and deploy the React app."""
+        bucket_name = hosting_bucket or f'{self.project_name}-dashboard'
+        oac_name = f'{self.project_name}-dashboard-oac'
+
+        print(f"\n{'='*60}")
+        print(f"Setting up CloudFront + S3 hosting")
+        print(f"{'='*60}\n")
+
+        # 1. Create bucket
+        self.create_hosting_bucket(bucket_name)
+
+        # 2. Create OAC
+        oac_id = self.find_or_create_oac(oac_name)
+
+        # 3. Create/find distribution
+        dist_id, dist_arn, dist_domain = self.create_or_update_distribution(bucket_name, oac_id)
+
+        # 4. Set bucket policy
+        self.set_hosting_bucket_policy(bucket_name, dist_arn)
+
+        # 5. Build React app
+        dist_dir = self.build_react_app()
+
+        # 6. Sync to S3
+        self.sync_to_s3(dist_dir, bucket_name)
+
+        # 7. Invalidate cache
+        self.invalidate_cloudfront_cache(dist_id)
+
+        print(f"\n{'='*60}")
+        print(f"Dashboard deployed!")
+        print(f"URL: https://{dist_domain}")
+        print(f"{'='*60}\n")
+        return dist_domain
+
     def validate_password(self, password):
         """Validate password against Cognito User Pool password policy."""
         if len(password) < 8:
@@ -992,17 +1028,22 @@ def main():
     parser.add_argument('--s3-bucket', help='S3 bucket name for images')
     parser.add_argument('--kvs-stream-name', help='KVS stream name (default: <project-name>-stream)')
     parser.add_argument('--demo-password', help='Password for demo user (must be 8+ chars with uppercase, lowercase, number, and special character)')
-    
+    parser.add_argument('--stage', choices=['setup', 'hosting'], help='Run a specific stage only')
+    parser.add_argument('--hosting-bucket', help='S3 bucket name for dashboard hosting (default: <project-name>-dashboard)')
+
     args = parser.parse_args()
-    
-    # Get password from argument or prompt
-    demo_password = args.demo_password
-    if not demo_password:
-        demo_password = getpass.getpass('Enter password for demo user (demo@example.com): ')
-    
+
     try:
         setup = AWSResourcesSetup(args.region, args.project_name)
-        setup.setup_all(args.s3_bucket, demo_password, args.kvs_stream_name)
+
+        if args.stage == 'hosting':
+            setup.setup_hosting(args.hosting_bucket)
+        else:
+            # Default: full setup
+            demo_password = args.demo_password
+            if not demo_password:
+                demo_password = getpass.getpass('Enter password for demo user (demo@example.com): ')
+            setup.setup_all(args.s3_bucket, demo_password, args.kvs_stream_name)
     except Exception as e:
         print(f"Setup failed: {e}")
         sys.exit(1)
