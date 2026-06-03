@@ -52,6 +52,9 @@ class VlmHandler:
         self.trigger_classes = ['person']
         self.trigger_cooldown = 10
         self.alert_rules = []
+        self.sms_enabled = False
+        self.sms_cooldown_seconds = 300
+        self._sms_last_sent = {}
         self._last_trigger_time = 0
         self._pending_query = None
 
@@ -163,6 +166,8 @@ class VlmHandler:
         self.trigger_classes = vlm_config.get("trigger_classes", ["person"])
         self.trigger_cooldown = vlm_config.get("trigger_cooldown", 10)
         self.alert_rules = vlm_config.get("alert_rules", [])
+        self.sms_enabled = vlm_config.get("sms_enabled", False)
+        self.sms_cooldown_seconds = int(vlm_config.get("sms_cooldown_seconds", 300))
 
         self.active_model_id = (
             desired.get("active_model")
@@ -192,6 +197,10 @@ class VlmHandler:
             self.trigger_cooldown = int(vlm_config["trigger_cooldown"])
         if "alert_rules" in vlm_config:
             self.alert_rules = vlm_config["alert_rules"]
+        if "sms_enabled" in vlm_config:
+            self.sms_enabled = bool(vlm_config["sms_enabled"])
+        if "sms_cooldown_seconds" in vlm_config:
+            self.sms_cooldown_seconds = int(vlm_config["sms_cooldown_seconds"])
         logger.info("VLM config updated: mode=%s, interval=%ds, trigger_classes=%s",
                     self.mode, self.inference_interval, self.trigger_classes)
         self._report_vlm_config()
@@ -369,6 +378,9 @@ class VlmHandler:
         if response and self.alert_rules:
             alerts = self._evaluate_alerts(image_b64)
             response["alerts"] = alerts
+            for alert in alerts:
+                if alert.get("triggered"):
+                    self._maybe_publish_sms_alert(alert, response)
 
         payload = {
             "timestamp": time.time(),
@@ -496,6 +508,40 @@ class VlmHandler:
         except Exception as e:
             logger.error("Failed to publish VLM result: %s", e)
 
+    def _publish_to_topic(self, topic, payload):
+        """Publish a payload to a specific MQTT topic."""
+        try:
+            encoded = json.dumps(payload).encode("utf-8")
+            self.ipc_client.publish_to_iot_core(
+                topic_name=topic,
+                qos="1",
+                payload=encoded,
+            )
+            logger.info("Published to %s", topic)
+        except Exception as e:
+            logger.error("Failed to publish to %s: %s", topic, e)
+
+    def _maybe_publish_sms_alert(self, alert, response):
+        """Publish to camera/alerts/sms if SMS enabled and cooldown elapsed."""
+        if not self.sms_enabled:
+            return
+        rule_key = alert["rule"].lower().strip()
+        now = time.time()
+        last = self._sms_last_sent.get(rule_key, 0)
+        if now - last < self.sms_cooldown_seconds:
+            return
+        self._sms_last_sent[rule_key] = now
+        payload = {
+            "timestamp": now,
+            "thing_name": self.thing_name,
+            "rule": alert["rule"],
+            "triggered": True,
+            "detail": alert.get("detail", ""),
+            "risk_level": response.get("risk_level", "UNKNOWN"),
+            "model_id": self.active_model_id,
+        }
+        self._publish_to_topic("camera/alerts/sms", payload)
+
     def _report_active_model(self):
         if self.active_model_id:
             self.shadow_client.update_reported({"active_model": self.active_model_id})
@@ -511,6 +557,8 @@ class VlmHandler:
                 "trigger_classes": self.trigger_classes,
                 "trigger_cooldown": self.trigger_cooldown,
                 "alert_rules": self.alert_rules,
+                "sms_enabled": self.sms_enabled,
+                "sms_cooldown_seconds": self.sms_cooldown_seconds,
             }
         })
 
