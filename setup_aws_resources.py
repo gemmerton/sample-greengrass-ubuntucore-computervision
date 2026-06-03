@@ -674,6 +674,28 @@ class AWSResourcesSetup:
         print(f"  Note: May take 5-10 minutes to fully deploy")
         return dist_id, dist_arn, dist_domain
 
+    def set_hosting_bucket_policy(self, bucket_name, distribution_arn):
+        """Set bucket policy allowing only the CloudFront distribution access."""
+        policy = {
+            "Version": "2012-10-17",
+            "Statement": [{
+                "Effect": "Allow",
+                "Principal": {"Service": "cloudfront.amazonaws.com"},
+                "Action": "s3:GetObject",
+                "Resource": f"arn:aws:s3:::{bucket_name}/*",
+                "Condition": {
+                    "StringEquals": {
+                        "AWS:SourceArn": distribution_arn
+                    }
+                }
+            }]
+        }
+        self.s3.put_bucket_policy(
+            Bucket=bucket_name,
+            Policy=json.dumps(policy)
+        )
+        print(f"Set bucket policy for CloudFront OAC access")
+
     def validate_password(self, password):
         """Validate password against Cognito User Pool password policy."""
         if len(password) < 8:
