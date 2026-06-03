@@ -357,6 +357,7 @@ class GreengrassDeployer:
                         'faster-rcnn': {'source': 'snap', 'type': 'cv'},
                         'person-detection': {'source': 'snap', 'type': 'cv'},
                         'yolov8s': {'source': 'snap', 'comp_s3_uri': 's3://gg-ge-test/components/ovms-engine+model-yolov8s.comp', 'type': 'cv'},
+                        'yolo26pose': {'source': 'snap', 'type': 'cv'},
                     },
                     'inference_interval': 1,
                     'confidence_threshold': 0.4,
