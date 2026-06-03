@@ -128,11 +128,18 @@
 .dashboard__settings-stack {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-md);
+  gap: var(--spacing-lg);
 }
 
 .dashboard__settings-field {
   min-width: 0;
+  padding-bottom: var(--spacing-lg);
+  border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+}
+
+.dashboard__settings-field:last-child {
+  padding-bottom: 0;
+  border-bottom: none;
 }
 
 /* ─── Content Grid ───────────────────────────────────────────────────── */

@@ -268,7 +268,9 @@ const DashboardContent: React.FC<DashboardProps> = ({
                 <div className="dashboard__settings-field">
                   <VlmModelSelector thingName={thingName} />
                 </div>
-                <VlmPromptEditor thingName={thingName} />
+                <div className="dashboard__settings-field">
+                  <VlmPromptEditor thingName={thingName} />
+                </div>
               </div>
             </div>
           </div>
