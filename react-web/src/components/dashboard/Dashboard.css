@@ -44,12 +44,12 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 5px 14px;
+  padding: 6px 16px;
   border-radius: var(--border-radius-full);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-sm);
   font-weight: var(--font-weight-bold);
   letter-spacing: var(--letter-spacing-wide);
-  border: 1px solid transparent;
+  border: 2px solid transparent;
   transition: all var(--transition-fast);
   backdrop-filter: blur(8px);
 }
@@ -150,26 +150,27 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border: 1px solid var(--border, #333);
-  border-radius: 8px;
-  background: var(--card-bg, #1a1a2e);
+  border: 2px solid rgba(168, 85, 247, 0.4);
+  border-radius: var(--border-radius-lg);
+  background: var(--color-card-bg);
 }
 
 .dashboard__vlm-tabs {
   display: flex;
   gap: 0;
-  border-bottom: 1px solid var(--border, #333);
+  border-bottom: 2px solid var(--color-border);
   flex-shrink: 0;
 }
 
 .dashboard__vlm-tab {
   flex: 1;
-  padding: 8px 12px;
+  padding: 10px 14px;
   background: none;
   border: none;
-  border-bottom: 2px solid transparent;
-  color: var(--text-muted, #888);
-  font-size: 0.8rem;
+  border-bottom: 3px solid transparent;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
   cursor: pointer;
   transition: color 0.15s, border-color 0.15s;
 }
@@ -206,7 +207,7 @@
 
 .dashboard__card {
   background: var(--color-card-bg);
-  border: 2px solid rgba(255, 153, 0, 0.45);
+  border: 3px solid rgba(255, 153, 0, 0.55);
   border-radius: var(--border-radius-xl);
   box-shadow: 0 0 20px rgba(255, 153, 0, 0.1), var(--shadow-lg);
   display: flex;
@@ -237,7 +238,8 @@
 
 /* Images card - warm orange/amber glow */
 .dashboard__card--images {
-  border-color: rgba(255, 153, 0, 0.5);
+  border-color: rgba(255, 153, 0, 0.6);
+  border-width: 3px;
   box-shadow: 0 0 25px rgba(255, 153, 0, 0.12), 0 4px 24px rgba(0, 0, 0, 0.4);
 }
 
@@ -255,7 +257,8 @@
 
 /* Video card - green/emerald glow */
 .dashboard__card--video {
-  border-color: rgba(16, 185, 129, 0.5);
+  border-color: rgba(16, 185, 129, 0.6);
+  border-width: 3px;
   box-shadow: 0 0 25px rgba(16, 185, 129, 0.12), 0 4px 24px rgba(0, 0, 0, 0.4);
 }
 
@@ -273,7 +276,8 @@
 
 /* Messages card - cool blue/cyan glow */
 .dashboard__card--messages {
-  border-color: rgba(59, 130, 246, 0.5);
+  border-color: rgba(59, 130, 246, 0.6);
+  border-width: 3px;
   box-shadow: 0 0 25px rgba(59, 130, 246, 0.12), 0 4px 24px rgba(0, 0, 0, 0.4);
 }
 
@@ -291,15 +295,15 @@
 
 .dashboard__card-header {
   padding: var(--spacing-lg) var(--spacing-xl);
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: 2px solid var(--color-border);
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
 
 .dashboard__card-title {
-  font-size: var(--font-size-lg);
-  font-weight: var(--font-weight-bold);
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-extrabold);
   color: var(--color-text-bright);
   margin: 0;
   letter-spacing: var(--letter-spacing-tight);

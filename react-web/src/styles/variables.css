@@ -49,18 +49,18 @@
   --color-card-header-bg: linear-gradient(135deg, #1f2d4a 0%, #1a2540 100%);
   --color-card-accent: linear-gradient(90deg, #FF9900 0%, #ec7211 50%, #ff6b35 100%);
   --color-card-accent-blue: linear-gradient(90deg, #2563eb 0%, #06b6d4 100%);
-  --color-card-border: rgba(255, 255, 255, 0.08);
-  --color-card-border-hover: rgba(255, 153, 0, 0.3);
+  --color-card-border: rgba(255, 255, 255, 0.15);
+  --color-card-border-hover: rgba(255, 153, 0, 0.5);
 
-  /* Border Color Tokens */
-  --color-border: rgba(255, 255, 255, 0.08);
-  --color-border-light: rgba(255, 255, 255, 0.05);
-  --color-border-accent: rgba(255, 153, 0, 0.4);
+  /* Border Color Tokens — stronger borders for panel definition */
+  --color-border: rgba(255, 255, 255, 0.15);
+  --color-border-light: rgba(255, 255, 255, 0.08);
+  --color-border-accent: rgba(255, 153, 0, 0.5);
 
-  /* Text Color Tokens */
-  --color-text-primary: #f1f5f9;
-  --color-text-secondary: #94a3b8;
-  --color-text-tertiary: #64748b;
+  /* Text Color Tokens — high contrast for demo visibility */
+  --color-text-primary: #f8fafc;
+  --color-text-secondary: #b0bec5;
+  --color-text-tertiary: #78909c;
   --color-text-inverse: #FFFFFF;
   --color-text-accent: #FF9900;
   --color-text-bright: #ffffff;
@@ -86,15 +86,15 @@
   --font-family-display: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   --font-family-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', 'Consolas', monospace;
 
-  /* Font Sizes */
-  --font-size-xs: 0.75rem;
-  --font-size-sm: 0.875rem;
-  --font-size-base: 1rem;
-  --font-size-lg: 1.125rem;
-  --font-size-xl: 1.25rem;
-  --font-size-2xl: 1.5rem;
-  --font-size-3xl: 2rem;
-  --font-size-4xl: 2.5rem;
+  /* Font Sizes — scaled up for demo readability */
+  --font-size-xs: 0.8rem;
+  --font-size-sm: 0.95rem;
+  --font-size-base: 1.1rem;
+  --font-size-lg: 1.25rem;
+  --font-size-xl: 1.4rem;
+  --font-size-2xl: 1.65rem;
+  --font-size-3xl: 2.2rem;
+  --font-size-4xl: 2.75rem;
 
   /* Font Weights */
   --font-weight-normal: 400;
