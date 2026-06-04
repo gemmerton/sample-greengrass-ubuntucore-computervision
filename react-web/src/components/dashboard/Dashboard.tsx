@@ -29,6 +29,7 @@ import { useAuthenticatedAWS } from '../../hooks/useAuthenticatedAWS';
 import { KvsPlayer } from './KvsPlayer';
 import type { CredentialsInput } from '../../services/kvsService';
 import { config } from '../../utils/config';
+import { ArchitectureDiagram } from './ArchitectureDiagram';
 
 // import { S3Object, S3Error } from '../../types/s3';  // S3 features temporarily hidden
 import './Dashboard.css';
@@ -51,6 +52,7 @@ const DashboardContent: React.FC<DashboardProps> = ({
   const [messagePanelOpen, setMessagePanelOpen] = useState<boolean>(false);
   const [videoElement, setVideoElement] = useState<HTMLVideoElement | null>(null);
   const [vlmTab, setVlmTab] = useState<'assessment' | 'query'>('assessment');
+  const [archDiagramOpen, setArchDiagramOpen] = useState(false);
   const contentRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
@@ -323,6 +325,11 @@ const DashboardContent: React.FC<DashboardProps> = ({
       </aside>
 
       <AlertBanner alerts={latestAlerts} timestamp={latestTimestamp} />
+
+      <button className="arch-fab" onClick={() => setArchDiagramOpen(true)} title="Architecture Diagram">
+        &#x2699;
+      </button>
+      <ArchitectureDiagram isOpen={archDiagramOpen} onClose={() => setArchDiagramOpen(false)} />
     </div>
   );
 };
