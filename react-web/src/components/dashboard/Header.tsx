@@ -45,7 +45,7 @@ export const Header: React.FC<HeaderProps> = ({ className = '' }) => {
             />
           </div>
           <div className="dashboard-header__title-group">
-            <h1 className="dashboard-header__title">Computer Vision at Edge</h1>
+            <h1 className="dashboard-header__title">Intelligent Edge: Adaptive AI Orchestration</h1>
             <p className="dashboard-header__subtitle">
               Powered by AWS • Intel OpenVINO • Canonical Ubuntu Core
             </p>
