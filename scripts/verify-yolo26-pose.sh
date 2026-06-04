@@ -28,10 +28,14 @@ m = ov.Core().read_model(model_path)
 print('=== YOLO26-Pose Tensor Verification ===')
 print()
 
-for i in m.inputs:
-    print(f'Input:  {i.get_any_name()} shape={i.shape}')
-for o in m.outputs:
-    print(f'Output: {o.get_any_name()} shape={o.shape}')
+for idx, i in enumerate(m.inputs):
+    names = i.get_names()
+    name = next(iter(names)) if names else f'input_{idx}'
+    print(f'Input:  {name} shape={list(i.shape)}')
+for idx, o in enumerate(m.outputs):
+    names = o.get_names()
+    name = next(iter(names)) if names else f'output_{idx}'
+    print(f'Output: {name} shape={list(o.shape)}')
 
 print()
 
