@@ -43,7 +43,7 @@ export const ArchitectureDiagram: React.FC<ArchitectureDiagramProps> = ({ isOpen
 
 const HighLevelView: React.FC = () => (
   <div className="arch-hl">
-    <svg className="arch-hl__svg" viewBox="0 0 1600 720" xmlns="http://www.w3.org/2000/svg">
+    <svg className="arch-hl__svg" viewBox="0 0 1600 720" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
       <defs>
         <marker id="arrow-green" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
           <polygon points="0 0, 10 3.5, 0 7" fill="#10b981" />
@@ -62,6 +62,9 @@ const HighLevelView: React.FC = () => (
         </marker>
         <marker id="arrow-teal" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
           <polygon points="0 0, 10 3.5, 0 7" fill="#6ee7b7" />
+        </marker>
+        <marker id="arrow-pink" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+          <polygon points="0 0, 10 3.5, 0 7" fill="#f9a8d4" />
         </marker>
       </defs>
 
@@ -156,8 +159,15 @@ const HighLevelView: React.FC = () => (
       <text x="1150" y="435" textAnchor="middle" fill="#a5b4fc" fontSize="15" fontWeight="bold">Shadow + MQTT</text>
       <line x1="1070" y1="490" x2="1070" y2="372" stroke="#6366f1" strokeWidth="3" markerEnd="url(#arrow-blue)" markerStart="url(#arrow-blue-rev)" />
 
-      {/* SNS -> IoT Core (internal cloud, downward) */}
-      <line x1="1187" y1="175" x2="1187" y2="218" stroke="rgba(165,180,252,0.5)" strokeWidth="2" markerEnd="url(#arrow-blue)" />
+      {/* IoT Core -> SNS (upward) */}
+      <line x1="1187" y1="220" x2="1187" y2="177" stroke="rgba(165,180,252,0.5)" strokeWidth="2" markerEnd="url(#arrow-blue)" />
+
+      {/* Mobile box (beside Workstation box) */}
+      <rect x="1350" y="540" width="200" height="120" rx="16" fill="rgba(236,72,153,0.04)" stroke="rgba(236,72,153,0.3)" strokeWidth="2.5" />
+      <text x="1450" y="590" textAnchor="middle" fill="#e2e8f0" fontSize="22" fontWeight="bold">Mobile</text>
+      <text x="1450" y="620" textAnchor="middle" fill="#94a3b8" fontSize="14">SMS Alerts</text>
+      {/* Arrow: SNS -> Mobile, route right out of SNS box then down */}
+      <path d="M 1285 130 L 1450 130 L 1450 538" fill="none" stroke="#f9a8d4" strokeWidth="2.5" markerEnd="url(#arrow-pink)" />
     </svg>
 
     {/* Flow description */}
