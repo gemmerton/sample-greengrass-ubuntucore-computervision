@@ -4,7 +4,6 @@
 
 import React from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { Button } from '../common/Button';
 import './Header.css';
 
 export interface HeaderProps {
@@ -54,14 +53,15 @@ export const Header: React.FC<HeaderProps> = ({ className = '' }) => {
 
         {/* Right side - Sign out */}
         <div className="dashboard-header__actions">
-          <Button
-            variant="secondary"
-            size="sm"
+          <button
             onClick={handleSignOut}
-            className="dashboard-header__sign-out"
+            className="dashboard-header__sign-out-compact"
           >
-            {user ? `${user.email || user.username} — Sign Out` : 'Sign Out'}
-          </Button>
+            <span className="dashboard-header__avatar">
+              {(user?.email || user?.username || '?').charAt(0).toUpperCase()}
+            </span>
+            <span className="dashboard-header__sign-out-label">Sign Out</span>
+          </button>
         </div>
       </div>
     </header>
