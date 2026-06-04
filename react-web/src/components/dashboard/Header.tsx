@@ -52,31 +52,15 @@ export const Header: React.FC<HeaderProps> = ({ className = '' }) => {
           </div>
         </div>
 
-        {/* Right side - User info and actions */}
+        {/* Right side - Sign out */}
         <div className="dashboard-header__actions">
-          {user && (
-            <div className="dashboard-header__user">
-              <div className="dashboard-header__user-info">
-                <span className="dashboard-header__user-name">
-                  {user.email || user.username}
-                </span>
-                <span className="dashboard-header__user-role">
-                  Authenticated User
-                </span>
-              </div>
-              <div className="dashboard-header__user-avatar">
-                {(user.email || user.username).charAt(0).toUpperCase()}
-              </div>
-            </div>
-          )}
-
           <Button
             variant="secondary"
             size="sm"
             onClick={handleSignOut}
             className="dashboard-header__sign-out"
           >
-            Sign Out
+            {user ? `${user.email || user.username} — Sign Out` : 'Sign Out'}
           </Button>
         </div>
       </div>
