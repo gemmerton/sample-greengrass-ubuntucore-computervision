@@ -20,6 +20,7 @@ ComponentConfiguration:
           resources:
             - 'camera/vlm'
             - 'camera/vlm-response'
+            - 'camera/alerts/sms'
         com.example.VlmInferenceHandler:mqttproxy:2:
           policyDescription: 'Subscribe to shadow delta, CV inference triggers, and scene queries'
           operations:
