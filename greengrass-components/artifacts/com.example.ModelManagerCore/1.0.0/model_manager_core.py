@@ -249,6 +249,9 @@ class ModelManagerCore:
             "output_names": manifest.get("output_names"),
             "input_shape": manifest.get("input_shape"),
             "input_dtype": manifest.get("input_dtype"),
+            "normalize": manifest.get("normalize"),
+            "output_format": manifest.get("output_format"),
+            "num_keypoints": manifest.get("num_keypoints"),
             "labels_file": labels_path,
             "local_path": component_path,
             "default_system_prompt": manifest.get("default_system_prompt"),
@@ -389,7 +392,14 @@ class ModelManagerCore:
         component_name = f"model-{model_id}"
         logger.info("Installing snap component: %s+%s", self.SNAP_NAME, component_name)
 
-        if self.snapd.is_store_snap(self.SNAP_NAME):
+        # Check if component is already installed (skip install if so)
+        existing_path = self._find_component_path(component_name)
+        if existing_path:
+            logger.info(
+                "Component '%s' already installed at %s, skipping install",
+                component_name, existing_path,
+            )
+        elif self.snapd.is_store_snap(self.SNAP_NAME):
             # Store-installed: pull component directly from the store
             try:
                 self.snapd.install_component(self.SNAP_NAME, component_name, timeout=300)
