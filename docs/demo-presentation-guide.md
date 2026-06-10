@@ -20,7 +20,7 @@ This demo shows that working end-to-end: a three-way partnership between **AWS**
 
 ### The Hook (2 minutes)
 
-Start here for every interaction. This is what grabs attention.
+Start here for every interaction.
 
 **1. Show live inference running**
 
@@ -32,7 +32,7 @@ The dashboard should already be running with a CV model active (person-detection
 
 Switch from the current model to a different one (e.g. person-detection → yolo26pose) using the model selector in the dashboard.
 
-> "Watch — I'm switching from basic person detection to a pose estimation model. The device receives the instruction via the cloud, swaps the model in OVMS, and starts serving the new model. No redeployment, no restart, no SSH."
+> "I'm switching from basic person detection to a pose estimation model. The device receives the instruction via the cloud, swaps the model in OVMS, and starts serving the new model. No redeployment, no restart, no SSH."
 
 Let them see the skeleton wireframe appear on the video feed.
 
@@ -48,7 +48,7 @@ Close the diagram.
 
 ### The Full Story (5-7 minutes)
 
-Continue here if the viewer is engaged.
+Continue here for broader demo.
 
 **4. Show multiple CV model types**
 
